@@ -1,0 +1,11 @@
+[package]
+name = "arith-utils"
+version = "0.1.0"
+authors = ["Dock.io"]
+edition = "2021"
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []

@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "libs/arith_utils",
+    "libs/price_provider",
+    "pallets/price_feed",
+    "pallets/price_feed/rpc"
+]

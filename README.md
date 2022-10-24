@@ -1,0 +1,1 @@
+Common libraries and pallets used by dock-substrate and its dependencies.
