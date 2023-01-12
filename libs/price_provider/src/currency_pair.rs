@@ -14,8 +14,8 @@ use codec::{Decode, Encode, EncodeLike, MaxEncodedLen};
 use scale_info::TypeInfo;
 
 /// A type which implements `EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo`
-pub trait EncodableString: EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo {}
-impl<T: EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo> EncodableString for T {}
+pub trait EncodableAsString: EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo {}
+impl<T: EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo> EncodableAsString for T {}
 
 /// Member of the currency pair used to express currency name limited by the max encoding size.
 #[derive(Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
@@ -23,12 +23,12 @@ impl<T: EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo> EncodableStri
 #[derive(TypeInfo)]
 #[codec(mel_bound())]
 #[scale_info(skip_type_params(MaxBytesLen))]
-struct PairMember<S: EncodableString, MaxBytesLen: Get<u32>> {
+struct PairMember<S: EncodableAsString, MaxBytesLen: Get<u32>> {
     currency: S,
     _marker: PhantomData<MaxBytesLen>,
 }
 
-impl<S: EncodableString, MaxBytesLen: Get<u32>> MaxEncodedLen for PairMember<S, MaxBytesLen> {
+impl<S: EncodableAsString, MaxBytesLen: Get<u32>> MaxEncodedLen for PairMember<S, MaxBytesLen> {
     fn max_encoded_len() -> usize {
         codec::Compact(MaxBytesLen::get())
             .encoded_size()
@@ -36,7 +36,7 @@ impl<S: EncodableString, MaxBytesLen: Get<u32>> MaxEncodedLen for PairMember<S, 
     }
 }
 
-impl<S: EncodableString, MaxBytesLen: Get<u32>> PairMember<S, MaxBytesLen> {
+impl<S: EncodableAsString, MaxBytesLen: Get<u32>> PairMember<S, MaxBytesLen> {
     /// Instantiates `Self` if encoded byte size of the provided currency doesn't exceed `MaxBytesLen`.
     fn new(currency: S) -> Option<Self> {
         (currency.encoded_size() <= Self::max_encoded_len()).then_some(Self {
@@ -55,14 +55,15 @@ impl<S: EncodableString, MaxBytesLen: Get<u32>> PairMember<S, MaxBytesLen> {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[codec(mel_bound())]
 #[scale_info(skip_type_params(MaxMemberBytesLen))]
-pub struct CurrencyPair<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>> {
+pub struct CurrencyPair<From: EncodableAsString, To: EncodableAsString, MaxMemberBytesLen: Get<u32>>
+{
     /// Represents currency being valued.
     from: PairMember<From, MaxMemberBytesLen>,
     /// Used as a unit to express price.
     to: PairMember<To, MaxMemberBytesLen>,
 }
 
-impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>> Encode
+impl<From: EncodableAsString, To: EncodableAsString, MaxMemberBytesLen: Get<u32>> Encode
     for CurrencyPair<From, To, MaxMemberBytesLen>
 {
     fn encode_to<T: codec::Output + ?Sized>(&self, dest: &mut T) {
@@ -71,13 +72,13 @@ impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>> En
     }
 }
 
-impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
+impl<From: EncodableAsString, To: EncodableAsString, MaxMemberBytesLen: Get<u32>>
     EncodeLike<CurrencyPair<String, String, MaxMemberBytesLen>>
     for CurrencyPair<From, To, MaxMemberBytesLen>
 {
 }
 
-impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
+impl<From: EncodableAsString, To: EncodableAsString, MaxMemberBytesLen: Get<u32>>
     CurrencyPair<From, To, MaxMemberBytesLen>
 {
     /// Attempts to instantiate new `CurrencyPair` using given from/to currencies.
@@ -89,7 +90,7 @@ impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
     }
 
     /// Maps given currency pair over `from` member and attempts to create a new `CurrencyPair`.
-    pub fn map_over_from<R: EncodableString, F: FnMut(From) -> R>(
+    pub fn map_over_from<R: EncodableAsString, F: FnMut(From) -> R>(
         self,
         mut map: F,
     ) -> Option<CurrencyPair<R, To, MaxMemberBytesLen>> {
@@ -102,7 +103,7 @@ impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
     }
 
     /// Maps given currency pair over `to` member and attempts to create a new `CurrencyPair`.
-    pub fn map_over_to<R: EncodableString, F: FnMut(To) -> R>(
+    pub fn map_over_to<R: EncodableAsString, F: FnMut(To) -> R>(
         self,
         mut map: F,
     ) -> Option<CurrencyPair<From, R, MaxMemberBytesLen>> {
@@ -115,9 +116,9 @@ impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
     }
 }
 
-impl<S: EncodableString, MaxMemberBytesLen: Get<u32>> CurrencyPair<S, S, MaxMemberBytesLen> {
+impl<S: EncodableAsString, MaxMemberBytesLen: Get<u32>> CurrencyPair<S, S, MaxMemberBytesLen> {
     /// Maps given currency pair over `from`/`to` members and attempts to create a new `CurrencyPair`.
-    pub fn map_pair<R: EncodableString, F: FnMut(S) -> R>(
+    pub fn map_pair<R: EncodableAsString, F: FnMut(S) -> R>(
         self,
         mut map: F,
     ) -> Option<CurrencyPair<R, R, MaxMemberBytesLen>> {
@@ -130,7 +131,7 @@ impl<S: EncodableString, MaxMemberBytesLen: Get<u32>> CurrencyPair<S, S, MaxMemb
     }
 }
 
-impl<FromTy: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
+impl<FromTy: EncodableAsString, To: EncodableAsString, MaxMemberBytesLen: Get<u32>>
     From<(
         PairMember<FromTy, MaxMemberBytesLen>,
         PairMember<To, MaxMemberBytesLen>,
@@ -146,11 +147,11 @@ impl<FromTy: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
     }
 }
 
-impl<
-        From: EncodableString + Display,
-        To: EncodableString + Display,
-        MaxMemberBytesLen: Get<u32>,
-    > Display for CurrencyPair<From, To, MaxMemberBytesLen>
+impl<From, To, MaxMemberBytesLen> Display for CurrencyPair<From, To, MaxMemberBytesLen>
+where
+    From: EncodableAsString + Display,
+    To: EncodableAsString + Display,
+    MaxMemberBytesLen: Get<u32>,
 {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(fmt, "{}/{}", self.from.currency, self.to.currency)
@@ -204,11 +205,8 @@ impl<FromTy, To, MaxMemberBytesLen: Get<u32>>
     }
 }
 
-impl<
-        From: EncodableString + Display,
-        To: EncodableString + Display,
-        MaxMemberBytesLen: Get<u32>,
-    > Display for StaticCurrencyPair<From, To, MaxMemberBytesLen>
+impl<From, To, MaxMemberBytesLen: Get<u32>> Display
+    for StaticCurrencyPair<From, To, MaxMemberBytesLen>
 {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(fmt, "{}/{}", self.pair.from.currency, self.pair.to.currency)
@@ -346,5 +344,7 @@ mod tests {
         let dock_pair: CurrencyPair<_, _, MaxLen> = DockUsd::get().into();
         let cur_pair = CurrencyPair::<_, _, MaxLen>::new("DOCK", "USD").unwrap();
         assert_eq!(dock_pair, cur_pair);
+
+        assert_eq!(format!("{}", DockUsd::get()), "DOCK/USD");
     }
 }

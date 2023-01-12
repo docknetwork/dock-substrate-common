@@ -5,7 +5,7 @@
 pub mod currency_pair;
 pub mod price_record;
 
-use currency_pair::{EncodableString, StaticCurrencyPair};
+use currency_pair::{EncodableAsString, StaticCurrencyPair};
 use frame_support::traits::Get;
 
 pub use crate::{currency_pair::CurrencyPair, price_record::PriceRecord};
@@ -17,8 +17,8 @@ pub trait PriceProvider<T: frame_system::Config, MaxMemberBytesLen: Get<u32>> {
     /// Returns the price record containing raw price amount, decimals, and the block number.
     fn pair_price<From, To, P>(currency_pair: P) -> Option<PriceRecord<T::BlockNumber>>
     where
-        From: EncodableString,
-        To: EncodableString,
+        From: EncodableAsString,
+        To: EncodableAsString,
         P: Into<CurrencyPair<From, To, MaxMemberBytesLen>>;
 }
 

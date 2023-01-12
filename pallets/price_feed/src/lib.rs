@@ -43,7 +43,7 @@ mod pallet {
     use super::*;
     use frame_support::pallet_prelude::{OptionQuery, ValueQuery, *};
     use frame_system::pallet_prelude::*;
-    use price_provider::currency_pair::EncodableString;
+    use price_provider::currency_pair::EncodableAsString;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -228,8 +228,8 @@ mod pallet {
         /// This operation performs a single storage read.
         fn pair_price<From, To, P>(currency_pair: P) -> Option<PriceRecord<T::BlockNumber>>
         where
-            From: EncodableString,
-            To: EncodableString,
+            From: EncodableAsString,
+            To: EncodableAsString,
             P: Into<CurrencyPair<From, To, T::MaxCurrencyLen>>,
         {
             Self::price(currency_pair.into())
