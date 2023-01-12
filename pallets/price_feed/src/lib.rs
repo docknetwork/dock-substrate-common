@@ -147,7 +147,7 @@ mod pallet {
             if <Operators<T>>::get(&currency_pair, &account).is_some() {
                 let price_record =
                     PriceRecord::new(price, decimals, <system::Pallet<T>>::block_number());
-                <Prices<T>>::insert(&currency_pair, &price_record);
+                <Prices<T>>::insert(&currency_pair, price_record);
 
                 Self::deposit_event(Event::<T>::PriceSet(currency_pair, price_record, account));
 
