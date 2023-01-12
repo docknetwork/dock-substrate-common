@@ -8,17 +8,20 @@ pub use price_feed::runtime_api::PriceFeedApi as PriceFeedRuntimeApi;
 use price_feed::{CurrencyPair, PriceRecord};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_runtime::{generic::BlockId, traits::Block as BlockT};
+use sp_runtime::{
+    generic::BlockId,
+    traits::{Block as BlockT, Get},
+};
 use std::sync::Arc;
 
 #[rpc(server, client)]
-pub trait PriceFeedApi<BlockHash, Number> {
+pub trait PriceFeedApi<BlockHash, Number, MaxCurrencyLen: Get<u32>> {
     /// Gets the price of currency pair
     #[method(name = "price_feed_price")]
     async fn price(
         &self,
         at: Option<BlockHash>,
-        currency_pair: price_feed::CurrencyPair<String>,
+        currency_pair: price_feed::CurrencyPair<String, String, MaxCurrencyLen>,
     ) -> RpcResult<Option<PriceRecord<Number>>>;
 }
 
@@ -54,16 +57,19 @@ impl<C, P> PriceFeed<C, P> {
 }
 
 #[async_trait]
-impl<C, Block> PriceFeedApiServer<<Block as BlockT>::Hash, NumberFor<Block>> for PriceFeed<C, Block>
+impl<C, Block, MaxCurrencyLen>
+    PriceFeedApiServer<<Block as BlockT>::Hash, NumberFor<Block>, MaxCurrencyLen>
+    for PriceFeed<C, Block>
 where
     Block: BlockT,
+    MaxCurrencyLen: Get<u32> + Send + Sync + 'static,
     C: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    C::Api: PriceFeedRuntimeApi<Block, NumberFor<Block>>,
+    C::Api: PriceFeedRuntimeApi<Block, NumberFor<Block>, MaxCurrencyLen>,
 {
     async fn price(
         &self,
         at: Option<<Block as BlockT>::Hash>,
-        pair: CurrencyPair<String>,
+        pair: CurrencyPair<String, String, MaxCurrencyLen>,
     ) -> RpcResult<Option<PriceRecord<NumberFor<Block>>>> {
         let api = self.client.runtime_api();
 
