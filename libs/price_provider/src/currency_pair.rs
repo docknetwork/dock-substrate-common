@@ -1,7 +1,10 @@
 //! Defines `CurrencyPair` and `StaticCurrencyPair` used to express price relationship between two currencies.
 //! Given some from/to pair price `N` should be considered as `1 x from = N x to`.
 
-use core::{fmt::Debug, marker::PhantomData};
+use core::{
+    fmt::{Debug, Display},
+    marker::PhantomData,
+};
 use frame_support::{traits::Get, CloneNoBound, DebugNoBound, EqNoBound, PartialEqNoBound};
 
 #[cfg(feature = "std")]
@@ -36,7 +39,7 @@ impl<S: EncodableString, MaxBytesLen: Get<u32>> MaxEncodedLen for PairMember<S, 
 impl<S: EncodableString, MaxBytesLen: Get<u32>> PairMember<S, MaxBytesLen> {
     /// Instantiates `Self` if encoded byte size of the provided currency doesn't exceed `MaxBytesLen`.
     fn new(currency: S) -> Option<Self> {
-        (currency.encoded_size() <= Self::max_encoded_len()).then(|| Self {
+        (currency.encoded_size() <= Self::max_encoded_len()).then_some(Self {
             currency,
             _marker: PhantomData,
         })
@@ -46,7 +49,9 @@ impl<S: EncodableString, MaxBytesLen: Get<u32>> PairMember<S, MaxBytesLen> {
 /// Represents from/to currency pair.
 /// Used to express price relationship between two currencies.
 /// Given some from/to pair price `N` should be considered as `1 x from = N x to`.
-#[derive(Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, MaxEncodedLen)]
+#[derive(
+    Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, MaxEncodedLen, DebugNoBound,
+)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[codec(mel_bound())]
 #[scale_info(skip_type_params(MaxMemberBytesLen))]
@@ -141,18 +146,23 @@ impl<FromTy: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>>
     }
 }
 
-impl<From: EncodableString, To: EncodableString, MaxMemberBytesLen: Get<u32>> core::fmt::Debug
-    for CurrencyPair<From, To, MaxMemberBytesLen>
+impl<
+        From: EncodableString + Display,
+        To: EncodableString + Display,
+        MaxMemberBytesLen: Get<u32>,
+    > Display for CurrencyPair<From, To, MaxMemberBytesLen>
 {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(fmt, "{:?}/{:?}", self.from.currency, self.to.currency)
+        write!(fmt, "{}/{}", self.from.currency, self.to.currency)
     }
 }
 
 /// Represents from/to currency pair built atop of two types returning `&'static str`.
 /// Used to express price relationship between two currencies.
 /// Given some from/to pair price `N` should be considered as `1 x from = N x to`.
-#[derive(Encode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, MaxEncodedLen)]
+#[derive(
+    Encode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, MaxEncodedLen, DebugNoBound,
+)]
 #[cfg_attr(feature = "std", derive(Serialize))]
 #[codec(mel_bound())]
 #[scale_info(skip_type_params(MaxMemberBytesLen))]
@@ -194,8 +204,27 @@ impl<FromTy, To, MaxMemberBytesLen: Get<u32>>
     }
 }
 
+impl<
+        From: EncodableString + Display,
+        To: EncodableString + Display,
+        MaxMemberBytesLen: Get<u32>,
+    > Display for StaticCurrencyPair<From, To, MaxMemberBytesLen>
+{
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(fmt, "{}/{}", self.pair.from.currency, self.pair.to.currency)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[derive(PartialEq, Clone, Debug, Encode, TypeInfo)]
+    struct A(String);
+    impl EncodeLike<String> for A {}
+
+    #[derive(PartialEq, Clone, Debug, Encode, TypeInfo)]
+    struct B(String);
+    impl EncodeLike<String> for B {}
+
     use frame_support::traits::ConstU32;
     use sp_runtime::parameter_types;
 
@@ -205,10 +234,37 @@ mod tests {
     fn debug() {
         assert_eq!(
             format!(
-                "{:?}",
+                "{}",
                 CurrencyPair::<_, _, ConstU32<3>>::new("ABC", "CDE").unwrap()
             ),
-            "\"ABC\"/\"CDE\""
+            "ABC/CDE"
+        );
+    }
+
+    #[test]
+    fn map() {
+        let one_type_pair =
+            CurrencyPair::<_, _, ConstU32<2>>::new("AB".to_string(), "BC".to_string()).unwrap();
+        let diff_type_pair =
+            CurrencyPair::<_, _, ConstU32<1>>::new(A("A".to_owned()), B("B".to_owned())).unwrap();
+
+        assert_eq!(
+            one_type_pair
+                .map_pair(|mut v| {
+                    unsafe { v.as_bytes_mut() }.reverse();
+                    v
+                })
+                .unwrap(),
+            CurrencyPair::new("BA".to_string(), "CB".to_string()).unwrap()
+        );
+
+        assert_eq!(
+            diff_type_pair.clone().map_over_from(|A(a)| a).unwrap(),
+            CurrencyPair::<_, _, ConstU32<1>>::new("A".to_owned(), B("B".to_owned())).unwrap()
+        );
+        assert_eq!(
+            diff_type_pair.map_over_to(|B(b)| b).unwrap(),
+            CurrencyPair::<_, _, ConstU32<1>>::new(A("A".to_owned()), "B".to_owned()).unwrap()
         );
     }
 
@@ -258,10 +314,6 @@ mod tests {
 
     #[test]
     fn encode_decode_custom_type() {
-        #[derive(PartialEq, Clone, Debug, Encode, TypeInfo)]
-        struct A(String);
-        impl EncodeLike<String> for A {}
-
         impl AsRef<str> for A {
             fn as_ref(&self) -> &str {
                 self.0.as_ref()
