@@ -82,6 +82,7 @@ impl timestamp::Config for Test {
 }
 
 impl price_feed::Config for Test {
+    type MaxCurrencyLen = ConstU32<4>;
     type Event = ();
 }
 

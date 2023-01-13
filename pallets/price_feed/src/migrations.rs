@@ -1,9 +1,11 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use super::*;
 use codec::{Decode, Encode};
+use frame_support::{traits::Get, *};
 
 pub mod v1 {
+    use super::*;
+
     /// Function and event param types.
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -31,7 +33,11 @@ pub mod v1 {
         Tuple(Vec<ParamType>),*/
     }
 
-    use super::*;
+    use crate::{
+        pallet::{Config, StorageVersion},
+        Releases,
+    };
+
     use frame_support::weights::Weight;
     use scale_info::TypeInfo;
     use sp_core::H160;
@@ -95,7 +101,7 @@ pub mod v1 {
         ContractConfigStore::kill();
         LastPriceUpdateAt::<T>::kill();
         PriceUpdateFreq::kill();
-        StorageVersion::put(Releases::V2MultiPair);
+        StorageVersion::<T>::put(Releases::V2MultiPair);
 
         T::DbWeight::get().writes(5)
     }

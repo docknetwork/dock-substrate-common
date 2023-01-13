@@ -1,14 +1,14 @@
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_runtime::traits::CheckedConversion;
 use sp_std::prelude::*;
 
 /// Stores price amount with specified decimals and block number when this record was created.
-#[derive(Encode, Decode, TypeInfo, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Encode, Decode, TypeInfo, Clone, Copy, PartialEq, Eq, Hash, Debug, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PriceRecord<T> {
     /// Raw price amount. This value should be divided by 10^decimals to get a price per 1 unit.
