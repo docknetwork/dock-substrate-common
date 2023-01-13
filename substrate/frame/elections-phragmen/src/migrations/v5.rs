@@ -18,7 +18,7 @@ pub fn migrate<T: Config>(to_migrate: Vec<T::AccountId>) -> Weight {
 
             if voter.stake > free_balance {
                 voter.stake = free_balance;
-                Voting::<T>::insert(&who, voter);
+                Voting::<T>::insert(who, voter);
 
                 let pallet_id = T::PalletId::get();
                 T::Currency::set_lock(pallet_id, who, free_balance, WithdrawReasons::all());

@@ -804,7 +804,7 @@ pub mod pallet {
                     // once this genesis voter is removed, and for now it is okay because
                     // remove_lock is noop if lock is not there.
                     <Voting<T>>::insert(
-                        &member,
+                        member,
                         Voter {
                             votes: vec![member.clone()],
                             stake: *stake,
@@ -1008,7 +1008,7 @@ impl<T: Config> Pallet<T> {
             .map(|max_added_at_block| {
                 Self::candidates().into_iter().filter_map(
                     move |(candidate, deposit, added_at_block)| {
-                        (added_at_block <= max_added_at_block).then(|| (candidate, deposit))
+                        (added_at_block <= max_added_at_block).then_some((candidate, deposit))
                     },
                 )
             })

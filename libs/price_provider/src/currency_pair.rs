@@ -14,7 +14,7 @@ use codec::{Decode, Encode, EncodeLike, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_runtime::DispatchError;
 
-/// A type which implements `EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo`
+/// Denotes a type which implements `EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo`
 pub trait EncodableAsString:
     EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo + 'static
 {
@@ -113,6 +113,7 @@ impl<From: EncodableAsString, To: EncodableAsString, MaxSymBytesLen: Get<u32>>
 {
 }
 
+/// Stores `CurrencyPair` and limits each of the symbols by the max length in bytes - `MaxSymBytesLen`.
 #[derive(Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[codec(mel_bound())]
@@ -217,12 +218,8 @@ where
 /// Represents from/to currency pair built atop of two types returning `&'static str`.
 /// Used to express price relationship between two currencies.
 /// Given some from/to pair price `N` should be considered as `1 x from = N x to`.
-#[derive(Clone, PartialEq, Eq, Debug)]
-#[cfg_attr(feature = "std", derive(Serialize))]
-#[derive(TypeInfo)]
-#[codec(mel_bound())]
-#[scale_info(skip_type_params(MaxSymBytesLen))]
-pub struct StaticCurrencyPair<From, To> {
+#[derive(TypeInfo, Clone, PartialEq, Eq, Debug)]
+pub struct StaticCurrencyPair<From: Get<&'static str>, To: Get<&'static str>> {
     _marker: PhantomData<(From, To)>,
 }
 

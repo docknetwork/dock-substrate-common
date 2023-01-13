@@ -35,7 +35,6 @@ where
     T: frame_system::Config,
     P: Get<CurrencyPair<&'static str, &'static str>>,
 {
-    /// Bound pair.
     type Error;
 
     /// Get the latest price of the bound currency pair.
