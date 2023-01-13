@@ -12,7 +12,10 @@ use scale_info::{prelude::string::String, TypeInfo};
 use sp_std::prelude::*;
 
 pub mod runtime_api;
-pub use price_provider::{BoundPriceProvider, CurrencyPair, PriceProvider, PriceRecord};
+pub use price_provider::{
+    CurrencyPair, PriceProvider, PriceRecord, StaticPriceProvider, StoredCurrencyPair,
+    StoredCurrencyPairError,
+};
 use system::ensure_signed;
 
 mod migrations;
@@ -67,15 +70,15 @@ mod pallet {
         T: Config,
     {
         OperatorAdded(
-            CurrencyPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
             <T as system::Config>::AccountId,
         ),
         OperatorRemoved(
-            CurrencyPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
             <T as system::Config>::AccountId,
         ),
         PriceSet(
-            CurrencyPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
             PriceRecord<<T as system::Config>::BlockNumber>,
             <T as system::Config>::AccountId,
         ),
@@ -94,7 +97,7 @@ mod pallet {
     pub type Operators<T: Config> = StorageDoubleMap<
         _,
         Twox64Concat,
-        CurrencyPair<String, String, T::MaxCurrencyLen>,
+        StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
         Twox64Concat,
         <T as frame_system::Config>::AccountId,
         (),
@@ -108,7 +111,7 @@ mod pallet {
     pub type Prices<T: Config> = StorageMap<
         _,
         Twox64Concat,
-        CurrencyPair<String, String, T::MaxCurrencyLen>,
+        StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
         PriceRecord<T::BlockNumber>,
         OptionQuery,
     >;
@@ -138,18 +141,19 @@ mod pallet {
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn set_price(
             origin: OriginFor<T>,
-            currency_pair: CurrencyPair<String, String, T::MaxCurrencyLen>,
+            currency_pair: CurrencyPair<String, String>,
             price: u64,
             decimals: u8,
         ) -> DispatchResult {
             let account = ensure_signed(origin)?;
 
-            if <Operators<T>>::get(&currency_pair, &account).is_some() {
+            let stored_pair = currency_pair.try_into()?;
+            if <Operators<T>>::get(&stored_pair, &account).is_some() {
                 let price_record =
                     PriceRecord::new(price, decimals, <system::Pallet<T>>::block_number());
-                <Prices<T>>::insert(&currency_pair, price_record);
+                <Prices<T>>::insert(&stored_pair, price_record);
 
-                Self::deposit_event(Event::<T>::PriceSet(currency_pair, price_record, account));
+                Self::deposit_event(Event::<T>::PriceSet(stored_pair, price_record, account));
 
                 return Ok(());
             }
@@ -161,12 +165,13 @@ mod pallet {
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn add_operator(
             origin: OriginFor<T>,
-            currency_pair: CurrencyPair<String, String, T::MaxCurrencyLen>,
+            currency_pair: CurrencyPair<String, String>,
             operator: T::AccountId,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            <Operators<T>>::try_mutate(&currency_pair, &operator, |allowed| {
+            let stored_pair = currency_pair.try_into()?;
+            <Operators<T>>::try_mutate(&stored_pair, &operator, |allowed| {
                 if allowed.is_none() {
                     *allowed = Some(());
 
@@ -175,7 +180,7 @@ mod pallet {
                     Err(Error::<T>::OperatorIsAlreadyAdded)
                 }
             })?;
-            Self::deposit_event(Event::<T>::OperatorAdded(currency_pair, operator));
+            Self::deposit_event(Event::<T>::OperatorAdded(stored_pair, operator));
 
             Ok(())
         }
@@ -184,12 +189,13 @@ mod pallet {
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn remove_operator(
             origin: OriginFor<T>,
-            currency_pair: CurrencyPair<String, String, T::MaxCurrencyLen>,
+            currency_pair: CurrencyPair<String, String>,
             operator: T::AccountId,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            <Operators<T>>::try_mutate(&currency_pair, &operator, |allowed| {
+            let stored_pair = currency_pair.try_into()?;
+            <Operators<T>>::try_mutate(&stored_pair, &operator, |allowed| {
                 if allowed.is_some() {
                     allowed.take();
 
@@ -198,7 +204,7 @@ mod pallet {
                     Err(Error::<T>::OperatorDoesntExist)
                 }
             })?;
-            Self::deposit_event(Event::<T>::OperatorRemoved(currency_pair, operator));
+            Self::deposit_event(Event::<T>::OperatorRemoved(stored_pair, operator));
 
             Ok(())
         }
@@ -223,16 +229,21 @@ mod pallet {
         }
     }
 
-    impl<T: Config> PriceProvider<T, T::MaxCurrencyLen> for Pallet<T> {
+    impl<T: Config> PriceProvider<T> for Pallet<T> {
+        type Error = StoredCurrencyPairError;
+
         /// Returns the price of the given currency pair from storage.
         /// This operation performs a single storage read.
-        fn pair_price<From, To, P>(currency_pair: P) -> Option<PriceRecord<T::BlockNumber>>
+        fn pair_price<From, To>(
+            currency_pair: CurrencyPair<From, To>,
+        ) -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error>
         where
             From: EncodableAsString,
             To: EncodableAsString,
-            P: Into<CurrencyPair<From, To, T::MaxCurrencyLen>>,
         {
-            Self::price(currency_pair.into())
+            currency_pair
+                .try_into()
+                .map(Self::price::<StoredCurrencyPair<_, _, T::MaxCurrencyLen>>)
         }
     }
 }

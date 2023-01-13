@@ -5,7 +5,7 @@ use jsonrpsee::{
     types::{error::CallError, ErrorObject},
 };
 pub use price_feed::runtime_api::PriceFeedApi as PriceFeedRuntimeApi;
-use price_feed::{CurrencyPair, PriceRecord};
+use price_feed::{PriceRecord, StoredCurrencyPair};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::{
@@ -21,7 +21,7 @@ pub trait PriceFeedApi<BlockHash, Number, MaxCurrencyLen: Get<u32>> {
     async fn price(
         &self,
         at: Option<BlockHash>,
-        currency_pair: price_feed::CurrencyPair<String, String, MaxCurrencyLen>,
+        currency_pair: price_feed::StoredCurrencyPair<String, String, MaxCurrencyLen>,
     ) -> RpcResult<Option<PriceRecord<Number>>>;
 }
 
@@ -69,7 +69,7 @@ where
     async fn price(
         &self,
         at: Option<<Block as BlockT>::Hash>,
-        pair: CurrencyPair<String, String, MaxCurrencyLen>,
+        pair: StoredCurrencyPair<String, String, MaxCurrencyLen>,
     ) -> RpcResult<Option<PriceRecord<NumberFor<Block>>>> {
         let api = self.client.runtime_api();
 
