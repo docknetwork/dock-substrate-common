@@ -11,7 +11,7 @@ use frame_support::{traits::Get, CloneNoBound, DebugNoBound, EqNoBound, PartialE
 use serde::{Deserialize, Serialize};
 
 use codec::{Decode, Encode, EncodeLike, MaxEncodedLen};
-use scale_info::TypeInfo;
+use scale_info::{prelude::string::String, TypeInfo};
 use sp_runtime::DispatchError;
 
 /// Denotes a type which implements `EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo`
@@ -401,7 +401,7 @@ mod tests {
         parameter_types! {
             pub const DOCKSym: &'static str = "DOCK";
             pub const USDSym: &'static str = "USD";
-            pub const MaxCurrencyLen: u32 = 4;
+            pub const MaxSymbolBytesLen: u32 = 4;
         }
 
         type DockUsdPair = StaticCurrencySymbolPair<DOCKSym, USDSym>;

@@ -78,7 +78,7 @@ fn submit_candidates<T: Config>(
 }
 
 /// Add `c` new candidates with self vote.
-fn submit_candidates_with_self_vote<T: Config>(
+fn submit_candidates_with_self_vote<T: crate::Config>(
     c: u32,
     prefix: &'static str,
 ) -> Result<Vec<T::AccountId>, &'static str> {
@@ -87,6 +87,9 @@ fn submit_candidates_with_self_vote<T: Config>(
     let _ = candidates
         .iter()
         .try_for_each(|c| submit_voter::<T>(c.clone(), vec![c.clone()], stake).map(|_| ()))?;
+    frame_system::Pallet::<T>::set_block_number(
+        frame_system::Pallet::<T>::block_number() + T::CandidacyDelay::get(),
+    );
     Ok(candidates)
 }
 

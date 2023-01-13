@@ -4,6 +4,7 @@ use price_provider::{
     StoredCurrencySymbolPair, StoredCurrencySymbolPairError,
 };
 use sp_runtime::traits::CheckedConversion;
+use sp_std::borrow::ToOwned;
 
 use crate::{mock::*, Prices};
 
