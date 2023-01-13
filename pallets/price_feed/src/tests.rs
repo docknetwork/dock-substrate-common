@@ -1,7 +1,7 @@
 use frame_support::{parameter_types, traits::Get};
 use price_provider::{
-    currency_pair::StaticCurrencySymbolPair, CurrencySymbolPair, PriceProvider, PriceRecord,
-    StoredCurrencySymbolPair, StoredCurrencySymbolPairError,
+    currency_pair::StaticCurrencySymbolPair, BoundCurrencySymbolPair, BoundCurrencySymbolPairError,
+    CurrencySymbolPair, PriceProvider, PriceRecord,
 };
 use sp_runtime::traits::CheckedConversion;
 use sp_std::borrow::ToOwned;
@@ -67,7 +67,7 @@ fn set_price() {
         assert_eq!(
             PriceFeedModule::price(
                 CurrencySymbolPair::new("A", "B")
-                    .checked_into::<StoredCurrencySymbolPair<_, _, _>>()
+                    .checked_into::<BoundCurrencySymbolPair<_, _, _>>()
                     .unwrap()
             )
             .unwrap(),
@@ -114,11 +114,11 @@ fn price_provider() {
         );
         assert_eq!(
             PriceFeedModule::pair_price(CurrencySymbolPair::new("ABCDE", "B")),
-            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
         );
         assert_eq!(
             PriceFeedModule::pair_price(CurrencySymbolPair::new("A", "BCDEF")),
-            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
         );
     });
 }
@@ -161,16 +161,16 @@ fn dock_price_provider() {
         );
         assert_eq!(
             <PriceFeedModule as StaticPriceProvider<Test, LargeSymUsdPair>>::price(),
-            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
         );
         assert_eq!(
             <PriceFeedModule as StaticPriceProvider<Test, UsdLargeCurrencySymbolPair>>::price(),
-            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
         );
 
         Prices::<Test>::insert(
             CurrencySymbolPair::new("DOCK", "USD")
-                .checked_into::<StoredCurrencySymbolPair<_, _, _>>()
+                .checked_into::<BoundCurrencySymbolPair<_, _, _>>()
                 .unwrap(),
             PriceRecord::new(100, 2, 0),
         );

@@ -13,8 +13,8 @@ use sp_std::prelude::*;
 
 pub mod runtime_api;
 pub use price_provider::{
-    CurrencySymbolPair, PriceProvider, PriceRecord, StaticPriceProvider, StoredCurrencySymbolPair,
-    StoredCurrencySymbolPairError,
+    BoundCurrencySymbolPair, BoundCurrencySymbolPairError, CurrencySymbolPair, PriceProvider,
+    PriceRecord, StaticPriceProvider,
 };
 use system::ensure_signed;
 
@@ -70,15 +70,15 @@ mod pallet {
         T: Config,
     {
         OperatorAdded(
-            StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+            BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             <T as system::Config>::AccountId,
         ),
         OperatorRemoved(
-            StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+            BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             <T as system::Config>::AccountId,
         ),
         PriceSet(
-            StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+            BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             PriceRecord<<T as system::Config>::BlockNumber>,
             <T as system::Config>::AccountId,
         ),
@@ -97,7 +97,7 @@ mod pallet {
     pub type Operators<T: Config> = StorageDoubleMap<
         _,
         Twox64Concat,
-        StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+        BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         Twox64Concat,
         <T as frame_system::Config>::AccountId,
         (),
@@ -111,7 +111,7 @@ mod pallet {
     pub type Prices<T: Config> = StorageMap<
         _,
         Twox64Concat,
-        StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+        BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         PriceRecord<T::BlockNumber>,
         OptionQuery,
     >;
@@ -230,7 +230,7 @@ mod pallet {
     }
 
     impl<T: Config> PriceProvider<T> for Pallet<T> {
-        type Error = StoredCurrencySymbolPairError;
+        type Error = BoundCurrencySymbolPairError;
 
         /// Returns the price of the given currency pair from storage.
         /// This operation performs a single storage read.
@@ -243,7 +243,7 @@ mod pallet {
         {
             currency_pair
                 .try_into()
-                .map(Self::price::<StoredCurrencySymbolPair<_, _, T::MaxSymbolBytesLen>>)
+                .map(Self::price::<BoundCurrencySymbolPair<_, _, T::MaxSymbolBytesLen>>)
         }
     }
 }

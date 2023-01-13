@@ -8,8 +8,8 @@ pub mod currency_pair;
 pub mod price_record;
 
 pub use currency_pair::{
-    CurrencySymbolPair, EncodableAsString, StaticCurrencySymbolPair, StoredCurrencySymbolPair,
-    StoredCurrencySymbolPairError,
+    BoundCurrencySymbolPair, BoundCurrencySymbolPairError, CurrencySymbolPair, EncodableAsString,
+    StaticCurrencySymbolPair,
 };
 pub use price_record::PriceRecord;
 
