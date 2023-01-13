@@ -8,8 +8,8 @@ pub mod currency_pair;
 pub mod price_record;
 
 pub use currency_pair::{
-    CurrencyPair, EncodableAsString, StaticCurrencyPair, StoredCurrencyPair,
-    StoredCurrencyPairError,
+    CurrencySymbolPair, EncodableAsString, StaticCurrencySymbolPair, StoredCurrencySymbolPair,
+    StoredCurrencySymbolPairError,
 };
 pub use price_record::PriceRecord;
 
@@ -21,7 +21,7 @@ pub trait PriceProvider<T: frame_system::Config> {
     /// Get the latest price of the given currency pair.
     /// Returns the price record containing raw price amount, decimals, and the block number.
     fn pair_price<From, To>(
-        currency_pair: CurrencyPair<From, To>,
+        currency_pair: CurrencySymbolPair<From, To>,
     ) -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error>
     where
         From: EncodableAsString,
@@ -33,7 +33,7 @@ pub trait PriceProvider<T: frame_system::Config> {
 pub trait StaticPriceProvider<T, P>
 where
     T: frame_system::Config,
-    P: Get<CurrencyPair<&'static str, &'static str>>,
+    P: Get<CurrencySymbolPair<&'static str, &'static str>>,
 {
     type Error;
 
@@ -42,7 +42,7 @@ where
     fn price() -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error>;
 
     /// Returns underlying bound pair to provide a price for.
-    fn pair() -> CurrencyPair<&'static str, &'static str> {
+    fn pair() -> CurrencySymbolPair<&'static str, &'static str> {
         P::get()
     }
 }
@@ -50,13 +50,12 @@ where
 impl<T, P, PP> StaticPriceProvider<T, P> for PP
 where
     T: frame_system::Config,
-    P: Get<CurrencyPair<&'static str, &'static str>>,
+    P: Get<CurrencySymbolPair<&'static str, &'static str>>,
     PP: PriceProvider<T>,
 {
     type Error = PP::Error;
 
-    fn price() -> Result<Option<PriceRecord<<T as frame_system::Config>::BlockNumber>>, Self::Error>
-    {
+    fn price() -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error> {
         Self::pair_price(<Self as StaticPriceProvider<T, P>>::pair())
     }
 }

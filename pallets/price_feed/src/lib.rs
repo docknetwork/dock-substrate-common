@@ -13,8 +13,8 @@ use sp_std::prelude::*;
 
 pub mod runtime_api;
 pub use price_provider::{
-    CurrencyPair, PriceProvider, PriceRecord, StaticPriceProvider, StoredCurrencyPair,
-    StoredCurrencyPairError,
+    CurrencySymbolPair, PriceProvider, PriceRecord, StaticPriceProvider, StoredCurrencySymbolPair,
+    StoredCurrencySymbolPairError,
 };
 use system::ensure_signed;
 
@@ -70,15 +70,15 @@ mod pallet {
         T: Config,
     {
         OperatorAdded(
-            StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
             <T as system::Config>::AccountId,
         ),
         OperatorRemoved(
-            StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
             <T as system::Config>::AccountId,
         ),
         PriceSet(
-            StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
             PriceRecord<<T as system::Config>::BlockNumber>,
             <T as system::Config>::AccountId,
         ),
@@ -97,7 +97,7 @@ mod pallet {
     pub type Operators<T: Config> = StorageDoubleMap<
         _,
         Twox64Concat,
-        StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
+        StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
         Twox64Concat,
         <T as frame_system::Config>::AccountId,
         (),
@@ -111,7 +111,7 @@ mod pallet {
     pub type Prices<T: Config> = StorageMap<
         _,
         Twox64Concat,
-        StoredCurrencyPair<String, String, T::MaxCurrencyLen>,
+        StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
         PriceRecord<T::BlockNumber>,
         OptionQuery,
     >;
@@ -141,7 +141,7 @@ mod pallet {
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn set_price(
             origin: OriginFor<T>,
-            currency_pair: CurrencyPair<String, String>,
+            currency_pair: CurrencySymbolPair<String, String>,
             price: u64,
             decimals: u8,
         ) -> DispatchResult {
@@ -165,7 +165,7 @@ mod pallet {
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn add_operator(
             origin: OriginFor<T>,
-            currency_pair: CurrencyPair<String, String>,
+            currency_pair: CurrencySymbolPair<String, String>,
             operator: T::AccountId,
         ) -> DispatchResult {
             ensure_root(origin)?;
@@ -189,7 +189,7 @@ mod pallet {
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
         pub fn remove_operator(
             origin: OriginFor<T>,
-            currency_pair: CurrencyPair<String, String>,
+            currency_pair: CurrencySymbolPair<String, String>,
             operator: T::AccountId,
         ) -> DispatchResult {
             ensure_root(origin)?;
@@ -230,12 +230,12 @@ mod pallet {
     }
 
     impl<T: Config> PriceProvider<T> for Pallet<T> {
-        type Error = StoredCurrencyPairError;
+        type Error = StoredCurrencySymbolPairError;
 
         /// Returns the price of the given currency pair from storage.
         /// This operation performs a single storage read.
         fn pair_price<From, To>(
-            currency_pair: CurrencyPair<From, To>,
+            currency_pair: CurrencySymbolPair<From, To>,
         ) -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error>
         where
             From: EncodableAsString,
@@ -243,7 +243,7 @@ mod pallet {
         {
             currency_pair
                 .try_into()
-                .map(Self::price::<StoredCurrencyPair<_, _, T::MaxCurrencyLen>>)
+                .map(Self::price::<StoredCurrencySymbolPair<_, _, T::MaxCurrencyLen>>)
         }
     }
 }

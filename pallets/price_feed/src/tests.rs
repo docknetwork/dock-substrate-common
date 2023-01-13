@@ -1,7 +1,7 @@
 use frame_support::{parameter_types, traits::Get};
 use price_provider::{
-    currency_pair::StaticCurrencyPair, CurrencyPair, PriceProvider, PriceRecord,
-    StoredCurrencyPair, StoredCurrencyPairError,
+    currency_pair::StaticCurrencySymbolPair, CurrencySymbolPair, PriceProvider, PriceRecord,
+    StoredCurrencySymbolPair, StoredCurrencySymbolPairError,
 };
 use sp_runtime::traits::CheckedConversion;
 
@@ -12,26 +12,26 @@ fn add_operator() {
     new_test_ext().execute_with(|| {
         assert!(PriceFeedModule::add_operator(
             Origin::signed(1),
-            CurrencyPair::new("A", "B").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("A", "B").map_pair(ToOwned::to_owned),
             1
         )
         .is_err());
         assert!(PriceFeedModule::add_operator(
             Origin::root(),
-            CurrencyPair::new("A", "B").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("A", "B").map_pair(ToOwned::to_owned),
             1
         )
         .is_ok());
 
         assert!(PriceFeedModule::remove_operator(
             Origin::signed(1),
-            CurrencyPair::new("A", "B").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("A", "B").map_pair(ToOwned::to_owned),
             1
         )
         .is_err());
         assert!(PriceFeedModule::remove_operator(
             Origin::root(),
-            CurrencyPair::new("A", "B").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("A", "B").map_pair(ToOwned::to_owned),
             1
         )
         .is_ok());
@@ -43,7 +43,7 @@ fn set_price() {
     new_test_ext().execute_with(|| {
         assert!(PriceFeedModule::set_price(
             Origin::signed(1),
-            CurrencyPair::new("A", "B").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("A", "B").map_pair(ToOwned::to_owned),
             1,
             1
         )
@@ -51,22 +51,22 @@ fn set_price() {
 
         PriceFeedModule::add_operator(
             Origin::root(),
-            CurrencyPair::new("A", "B").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("A", "B").map_pair(ToOwned::to_owned),
             1,
         )
         .unwrap();
 
         assert!(PriceFeedModule::set_price(
             Origin::signed(1),
-            CurrencyPair::new("A", "B").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("A", "B").map_pair(ToOwned::to_owned),
             10,
             1
         )
         .is_ok());
         assert_eq!(
             PriceFeedModule::price(
-                CurrencyPair::new("A", "B")
-                    .checked_into::<StoredCurrencyPair<_, _, _>>()
+                CurrencySymbolPair::new("A", "B")
+                    .checked_into::<StoredCurrencySymbolPair<_, _, _>>()
                     .unwrap()
             )
             .unwrap(),
@@ -74,14 +74,14 @@ fn set_price() {
         );
         assert!(PriceFeedModule::set_price(
             Origin::signed(1),
-            CurrencyPair::new("B", "C").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("B", "C").map_pair(ToOwned::to_owned),
             1,
             1
         )
         .is_err());
         assert!(PriceFeedModule::set_price(
             Origin::signed(2),
-            CurrencyPair::new("B", "C").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("B", "C").map_pair(ToOwned::to_owned),
             1,
             1
         )
@@ -89,14 +89,14 @@ fn set_price() {
 
         PriceFeedModule::add_operator(
             Origin::root(),
-            CurrencyPair::new("B", "C").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("B", "C").map_pair(ToOwned::to_owned),
             2,
         )
         .unwrap();
 
         assert!(PriceFeedModule::set_price(
             Origin::signed(2),
-            CurrencyPair::new("B", "C").map_pair(ToOwned::to_owned),
+            CurrencySymbolPair::new("B", "C").map_pair(ToOwned::to_owned),
             1,
             1
         )
@@ -108,16 +108,16 @@ fn set_price() {
 fn price_provider() {
     new_test_ext().execute_with(|| {
         assert_eq!(
-            PriceFeedModule::pair_price(CurrencyPair::new("A", "B")),
+            PriceFeedModule::pair_price(CurrencySymbolPair::new("A", "B")),
             Ok(None)
         );
         assert_eq!(
-            PriceFeedModule::pair_price(CurrencyPair::new("ABCDE", "B")),
-            Err(StoredCurrencyPairError::InvalidSymbolByteLen)
+            PriceFeedModule::pair_price(CurrencySymbolPair::new("ABCDE", "B")),
+            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
         );
         assert_eq!(
-            PriceFeedModule::pair_price(CurrencyPair::new("A", "BCDEF")),
-            Err(StoredCurrencyPairError::InvalidSymbolByteLen)
+            PriceFeedModule::pair_price(CurrencySymbolPair::new("A", "BCDEF")),
+            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
         );
     });
 }
@@ -133,13 +133,13 @@ fn dock_price_provider() {
             pub const LARGESym: &'static str = "ABCDE";
         }
 
-        type DockUsdPair = StaticCurrencyPair<DOCKSym, USDSym>;
-        type LargeSymUsdPair = StaticCurrencyPair<LARGESym, USDSym>;
-        type UsdLargeSymPair = StaticCurrencyPair<USDSym, LARGESym>;
+        type DockUsdPair = StaticCurrencySymbolPair<DOCKSym, USDSym>;
+        type LargeSymUsdPair = StaticCurrencySymbolPair<LARGESym, USDSym>;
+        type UsdLargeCurrencySymbolPair = StaticCurrencySymbolPair<USDSym, LARGESym>;
 
         assert_eq!(
             <PriceFeedModule as StaticPriceProvider<Test, DockUsdPair>>::pair(),
-            CurrencyPair::new("DOCK", "USD")
+            CurrencySymbolPair::new("DOCK", "USD")
         );
 
         assert_eq!(
@@ -151,8 +151,8 @@ fn dock_price_provider() {
             LargeSymUsdPair::get()
         );
         assert_eq!(
-            <PriceFeedModule as StaticPriceProvider<Test, UsdLargeSymPair>>::pair(),
-            UsdLargeSymPair::get()
+            <PriceFeedModule as StaticPriceProvider<Test, UsdLargeCurrencySymbolPair>>::pair(),
+            UsdLargeCurrencySymbolPair::get()
         );
         assert_eq!(
             <PriceFeedModule as StaticPriceProvider<Test, DockUsdPair>>::price(),
@@ -160,16 +160,16 @@ fn dock_price_provider() {
         );
         assert_eq!(
             <PriceFeedModule as StaticPriceProvider<Test, LargeSymUsdPair>>::price(),
-            Err(StoredCurrencyPairError::InvalidSymbolByteLen)
+            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
         );
         assert_eq!(
-            <PriceFeedModule as StaticPriceProvider<Test, UsdLargeSymPair>>::price(),
-            Err(StoredCurrencyPairError::InvalidSymbolByteLen)
+            <PriceFeedModule as StaticPriceProvider<Test, UsdLargeCurrencySymbolPair>>::price(),
+            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
         );
 
         Prices::<Test>::insert(
-            CurrencyPair::new("DOCK", "USD")
-                .checked_into::<StoredCurrencyPair<_, _, _>>()
+            CurrencySymbolPair::new("DOCK", "USD")
+                .checked_into::<StoredCurrencySymbolPair<_, _, _>>()
                 .unwrap(),
             PriceRecord::new(100, 2, 0),
         );

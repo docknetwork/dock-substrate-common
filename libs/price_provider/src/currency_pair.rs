@@ -1,4 +1,4 @@
-//! Defines `CurrencyPair` and `StaticCurrencyPair` used to express price relationship between two currencies.
+//! Defines `CurrencySymbolPair` and `StaticCurrencySymbolPair` used to express price relationship between two currencies.
 //! Given some from/to pair price `N` should be considered as `1 x from = N x to`.
 
 use core::{
@@ -24,7 +24,7 @@ impl<T: EncodeLike<String> + PartialEq + Clone + Debug + TypeInfo + 'static> Enc
 {
 }
 
-/// Symbol of the currency used in `CurrencyPair` limited by the max encoded size.
+/// Symbol of the currency used in `CurrencySymbolPair` limited by the max encoded size.
 #[derive(Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(TypeInfo)]
@@ -35,15 +35,17 @@ struct StoredCurrencySymbol<S: EncodableAsString, MaxBytesLen: Get<u32>> {
     _marker: PhantomData<MaxBytesLen>,
 }
 
-/// Conversion errors happening on `CurrencyPair` -> `StoredCurrencyPair`.
+/// Conversion errors happening on `CurrencySymbolPair` -> `StoredCurrencySymbolPair`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum StoredCurrencyPairError {
+pub enum StoredCurrencySymbolPairError {
     /// The symbol has an invalid length.
     InvalidSymbolByteLen,
 }
 
-impl From<StoredCurrencyPairError> for DispatchError {
-    fn from(StoredCurrencyPairError::InvalidSymbolByteLen: StoredCurrencyPairError) -> Self {
+impl From<StoredCurrencySymbolPairError> for DispatchError {
+    fn from(
+        StoredCurrencySymbolPairError::InvalidSymbolByteLen: StoredCurrencySymbolPairError,
+    ) -> Self {
         DispatchError::Other("The symbol has an invalid length")
     }
 }
@@ -54,16 +56,20 @@ impl<S: EncodableAsString, MaxBytesLen: Get<u32>> EncodeLike<String>
 }
 
 impl<From: EncodableAsString, To: EncodableAsString, MaxSymBytesLen: Get<u32>>
-    TryFrom<CurrencyPair<From, To>> for StoredCurrencyPair<From, To, MaxSymBytesLen>
+    TryFrom<CurrencySymbolPair<From, To>> for StoredCurrencySymbolPair<From, To, MaxSymBytesLen>
 {
-    type Error = StoredCurrencyPairError;
+    type Error = StoredCurrencySymbolPairError;
 
-    fn try_from(CurrencyPair { from, to }: CurrencyPair<From, To>) -> Result<Self, Self::Error> {
+    /// Attempts to convert `CurrencySymbolPair` to the stored format with `MaxSymBytesLen` limit per symbol bytes.
+    /// Returns `Err` if the encoded length of either symbol exceeds `MaxSymBytesLen`.
+    fn try_from(
+        CurrencySymbolPair { from, to }: CurrencySymbolPair<From, To>,
+    ) -> Result<Self, Self::Error> {
         StoredCurrencySymbol::new(from)
             .zip(StoredCurrencySymbol::new(to))
-            .map(CurrencyPair::from)
+            .map(CurrencySymbolPair::from)
             .map(Self)
-            .ok_or(StoredCurrencyPairError::InvalidSymbolByteLen)
+            .ok_or(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
     }
 }
 
@@ -87,12 +93,12 @@ impl<S: EncodableAsString, MaxBytesLen: Get<u32>> StoredCurrencySymbol<S, MaxByt
     }
 }
 
-/// Represents from/to currency pair.
+/// Represents from/to currency symbol pair.
 /// Used to express price relationship between two currencies.
 /// Given some from/to pair price `N` should be considered as `1 x from = N x to`.
 #[derive(Encode, Decode, TypeInfo, Clone, PartialEq, Eq, Debug, Hash)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct CurrencyPair<From, To> {
+pub struct CurrencySymbolPair<From, To> {
     /// Represents currency being valued.
     from: From,
     /// Used as a unit to express price.
@@ -100,7 +106,7 @@ pub struct CurrencyPair<From, To> {
 }
 
 impl<From: EncodableAsString, To: EncodableAsString, MaxSymBytesLen: Get<u32>> Encode
-    for StoredCurrencyPair<From, To, MaxSymBytesLen>
+    for StoredCurrencySymbolPair<From, To, MaxSymBytesLen>
 {
     fn encode_to<T: codec::Output + ?Sized>(&self, dest: &mut T) {
         self.0.encode_to(dest);
@@ -108,18 +114,18 @@ impl<From: EncodableAsString, To: EncodableAsString, MaxSymBytesLen: Get<u32>> E
 }
 
 impl<From: EncodableAsString, To: EncodableAsString, MaxSymBytesLen: Get<u32>>
-    EncodeLike<StoredCurrencyPair<String, String, MaxSymBytesLen>>
-    for StoredCurrencyPair<From, To, MaxSymBytesLen>
+    EncodeLike<StoredCurrencySymbolPair<String, String, MaxSymBytesLen>>
+    for StoredCurrencySymbolPair<From, To, MaxSymBytesLen>
 {
 }
 
-/// Stores `CurrencyPair` and limits each of the symbols by the max length in bytes - `MaxSymBytesLen`.
+/// Stores `CurrencySymbolPair` and limits each of the symbols by the max length in bytes - `MaxSymBytesLen`.
 #[derive(Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[codec(mel_bound())]
 #[scale_info(skip_type_params(MaxSymBytesLen))]
-pub struct StoredCurrencyPair<From, To, MaxSymBytesLen>(
-    CurrencyPair<
+pub struct StoredCurrencySymbolPair<From, To, MaxSymBytesLen>(
+    CurrencySymbolPair<
         StoredCurrencySymbol<From, MaxSymBytesLen>,
         StoredCurrencySymbol<To, MaxSymBytesLen>,
     >,
@@ -129,7 +135,7 @@ where
     To: EncodableAsString,
     MaxSymBytesLen: Get<u32> + 'static;
 
-impl<From, To, MaxSymBytesLen> MaxEncodedLen for StoredCurrencyPair<From, To, MaxSymBytesLen>
+impl<From, To, MaxSymBytesLen> MaxEncodedLen for StoredCurrencySymbolPair<From, To, MaxSymBytesLen>
 where
     From: EncodableAsString,
     To: EncodableAsString,
@@ -141,15 +147,19 @@ where
     }
 }
 
-impl<FromTy, To, MaxSymBytesLen> From<StoredCurrencyPair<FromTy, To, MaxSymBytesLen>>
-    for CurrencyPair<FromTy, To>
+impl<FromTy, To, MaxSymBytesLen> From<StoredCurrencySymbolPair<FromTy, To, MaxSymBytesLen>>
+    for CurrencySymbolPair<FromTy, To>
 where
     FromTy: EncodableAsString,
     To: EncodableAsString,
     MaxSymBytesLen: Get<u32> + 'static,
 {
     fn from(
-        StoredCurrencyPair(currency_pair): StoredCurrencyPair<FromTy, To, MaxSymBytesLen>,
+        StoredCurrencySymbolPair(currency_pair): StoredCurrencySymbolPair<
+            FromTy,
+            To,
+            MaxSymBytesLen,
+        >,
     ) -> Self {
         currency_pair
             .map_over_from(|StoredCurrencySymbol { sym, .. }| sym)
@@ -157,55 +167,54 @@ where
     }
 }
 
-impl<From: EncodableAsString, To: EncodableAsString> CurrencyPair<From, To> {
-    /// Attempts to instantiate new `CurrencyPair` using given from/to currencies.
-    /// Returns `None` if the encoded length of either currency exceeds `MaxSymBytesLen`
+impl<From: EncodableAsString, To: EncodableAsString> CurrencySymbolPair<From, To> {
+    /// Attempts to instantiate new `CurrencySymbolPair` using given from/to currencies.
     pub fn new(from: From, to: To) -> Self {
         Self { from, to }
     }
 
-    /// Maps given currency pair over `from` member and attempts to create a new `CurrencyPair`.
+    /// Maps given currency pair over `from` member and attempts to create a new `CurrencySymbolPair`.
     pub fn map_over_from<R: EncodableAsString, F: FnMut(From) -> R>(
         self,
         mut map: F,
-    ) -> CurrencyPair<R, To> {
+    ) -> CurrencySymbolPair<R, To> {
         let Self { from, to } = self;
 
-        CurrencyPair::new((map)(from), to)
+        CurrencySymbolPair::new((map)(from), to)
     }
 
-    /// Maps given currency pair over `to` member and attempts to create a new `CurrencyPair`.
+    /// Maps given currency pair over `to` member and attempts to create a new `CurrencySymbolPair`.
     pub fn map_over_to<R: EncodableAsString, F: FnMut(To) -> R>(
         self,
         mut map: F,
-    ) -> CurrencyPair<From, R> {
+    ) -> CurrencySymbolPair<From, R> {
         let Self { from, to } = self;
 
-        CurrencyPair::new(from, (map)(to))
+        CurrencySymbolPair::new(from, (map)(to))
     }
 }
 
-impl<S: EncodableAsString> CurrencyPair<S, S> {
-    /// Maps given currency pair over `from`/`to` members and attempts to create a new `CurrencyPair`.
+impl<S: EncodableAsString> CurrencySymbolPair<S, S> {
+    /// Maps given currency pair over `from`/`to` members and attempts to create a new `CurrencySymbolPair`.
     pub fn map_pair<R: EncodableAsString, F: FnMut(S) -> R>(
         self,
         mut map: F,
-    ) -> CurrencyPair<R, R> {
+    ) -> CurrencySymbolPair<R, R> {
         let Self { from, to } = self;
 
-        CurrencyPair::new((map)(from), (map)(to))
+        CurrencySymbolPair::new((map)(from), (map)(to))
     }
 }
 
 impl<FromTy: EncodableAsString, To: EncodableAsString> From<(FromTy, To)>
-    for CurrencyPair<FromTy, To>
+    for CurrencySymbolPair<FromTy, To>
 {
     fn from((from, to): (FromTy, To)) -> Self {
         Self::new(from, to)
     }
 }
 
-impl<From, To> Display for CurrencyPair<From, To>
+impl<From, To> Display for CurrencySymbolPair<From, To>
 where
     From: EncodableAsString + Display,
     To: EncodableAsString + Display,
@@ -219,19 +228,21 @@ where
 /// Used to express price relationship between two currencies.
 /// Given some from/to pair price `N` should be considered as `1 x from = N x to`.
 #[derive(TypeInfo, Clone, PartialEq, Eq, Debug)]
-pub struct StaticCurrencyPair<From: Get<&'static str>, To: Get<&'static str>> {
+pub struct StaticCurrencySymbolPair<From: Get<&'static str>, To: Get<&'static str>> {
     _marker: PhantomData<(From, To)>,
 }
 
-impl<From: Get<&'static str>, To: Get<&'static str>> Get<CurrencyPair<&'static str, &'static str>>
-    for StaticCurrencyPair<From, To>
+impl<From: Get<&'static str>, To: Get<&'static str>>
+    Get<CurrencySymbolPair<&'static str, &'static str>> for StaticCurrencySymbolPair<From, To>
 {
-    fn get() -> CurrencyPair<&'static str, &'static str> {
-        CurrencyPair::new(From::get(), To::get())
+    fn get() -> CurrencySymbolPair<&'static str, &'static str> {
+        CurrencySymbolPair::new(From::get(), To::get())
     }
 }
 
-impl<From: Get<&'static str>, To: Get<&'static str>> Display for StaticCurrencyPair<From, To> {
+impl<From: Get<&'static str>, To: Get<&'static str>> Display
+    for StaticCurrencySymbolPair<From, To>
+{
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(fmt, "{}", Self::get())
     }
@@ -254,29 +265,32 @@ mod tests {
 
     #[test]
     fn debug() {
-        assert_eq!(format!("{}", CurrencyPair::new("ABC", "CDE")), "ABC/CDE");
+        assert_eq!(
+            format!("{}", CurrencySymbolPair::new("ABC", "CDE")),
+            "ABC/CDE"
+        );
     }
 
     #[test]
     fn map() {
-        let one_type_pair = CurrencyPair::new("AB".to_string(), "BC".to_string());
-        let diff_type_pair = CurrencyPair::new(A("A".to_owned()), B("B".to_owned()));
+        let one_type_pair = CurrencySymbolPair::new("AB".to_string(), "BC".to_string());
+        let diff_type_pair = CurrencySymbolPair::new(A("A".to_owned()), B("B".to_owned()));
 
         assert_eq!(
             one_type_pair.map_pair(|mut v| {
                 unsafe { v.as_bytes_mut() }.reverse();
                 v
             }),
-            CurrencyPair::new("BA".to_string(), "CB".to_string())
+            CurrencySymbolPair::new("BA".to_string(), "CB".to_string())
         );
 
         assert_eq!(
             diff_type_pair.clone().map_over_from(|A(a)| a),
-            CurrencyPair::new("A".to_owned(), B("B".to_owned()))
+            CurrencySymbolPair::new("A".to_owned(), B("B".to_owned()))
         );
         assert_eq!(
             diff_type_pair.map_over_to(|B(b)| b),
-            CurrencyPair::new(A("A".to_owned()), "B".to_owned())
+            CurrencySymbolPair::new(A("A".to_owned()), "B".to_owned())
         );
     }
 
@@ -302,25 +316,29 @@ mod tests {
         );
 
         assert_eq!(
-            StoredCurrencyPair::<_, _, ConstU32<2>>::try_from(CurrencyPair::new("ABC", "CDE")),
-            Err(StoredCurrencyPairError::InvalidSymbolByteLen)
+            StoredCurrencySymbolPair::<_, _, ConstU32<2>>::try_from(CurrencySymbolPair::new(
+                "ABC", "CDE"
+            )),
+            Err(StoredCurrencySymbolPairError::InvalidSymbolByteLen)
         );
         assert_eq!(
-            StoredCurrencyPair::<_, _, ConstU32<3>>::try_from(CurrencyPair::new("ABC", "CDE"))
-                .unwrap(),
-            CurrencyPair::new("ABC", "CDE").try_into().unwrap()
+            StoredCurrencySymbolPair::<_, _, ConstU32<3>>::try_from(CurrencySymbolPair::new(
+                "ABC", "CDE"
+            ))
+            .unwrap(),
+            CurrencySymbolPair::new("ABC", "CDE").try_into().unwrap()
         );
     }
 
     #[test]
     fn encode_decode() {
-        let pair = CurrencyPair::new("ABC", "CDE");
+        let pair = CurrencySymbolPair::new("ABC", "CDE");
         let encoded = pair
             .clone()
-            .checked_into::<StoredCurrencyPair<_, _, ConstU32<3>>>()
+            .checked_into::<StoredCurrencySymbolPair<_, _, ConstU32<3>>>()
             .unwrap()
             .encode();
-        let decoded: StoredCurrencyPair<String, _, ConstU32<3>> =
+        let decoded: StoredCurrencySymbolPair<String, _, ConstU32<3>> =
             Decode::decode(&mut &encoded[..]).unwrap();
         assert_eq!(
             decoded.0.from,
@@ -350,11 +368,11 @@ mod tests {
             }
         }
 
-        let pair = CurrencyPair::new(A("123".to_string()), A("122".to_string()));
-        let encoded = StoredCurrencyPair::<_, _, ConstU32<3>>::try_from(pair.clone())
+        let pair = CurrencySymbolPair::new(A("123".to_string()), A("122".to_string()));
+        let encoded = StoredCurrencySymbolPair::<_, _, ConstU32<3>>::try_from(pair.clone())
             .unwrap()
             .encode();
-        let decoded: StoredCurrencyPair<_, _, ConstU32<3>> =
+        let decoded: StoredCurrencySymbolPair<_, _, ConstU32<3>> =
             Decode::decode(&mut &encoded[..]).unwrap();
         assert_eq!(
             decoded.0.from,
@@ -373,7 +391,7 @@ mod tests {
             StoredCurrencySymbol::new("E".to_string()).unwrap()
         );
 
-        let decoded_pair: CurrencyPair<_, _> = decoded.into();
+        let decoded_pair: CurrencySymbolPair<_, _> = decoded.into();
         assert_eq!(pair.clone().map_pair(|A(val)| val), decoded_pair);
         assert_eq!(pair, decoded_pair.map_pair(A));
     }
@@ -386,9 +404,9 @@ mod tests {
             pub const MaxCurrencyLen: u32 = 4;
         }
 
-        type DockUsdPair = StaticCurrencyPair<DOCKSym, USDSym>;
+        type DockUsdPair = StaticCurrencySymbolPair<DOCKSym, USDSym>;
 
-        let cur_pair = CurrencyPair::<_, _>::new("DOCK", "USD");
+        let cur_pair = CurrencySymbolPair::<_, _>::new("DOCK", "USD");
         assert_eq!(DockUsdPair::get(), cur_pair);
 
         assert_eq!(format!("{}", DockUsdPair::get()), "DOCK/USD");

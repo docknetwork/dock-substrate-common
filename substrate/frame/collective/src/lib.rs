@@ -42,6 +42,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "128"]
 
+use codec::FullCodec;
 use scale_info::TypeInfo;
 use sp_io::storage;
 use sp_runtime::{
@@ -166,17 +167,46 @@ pub struct Votes<AccountId, BlockNumber> {
     end: BlockNumber,
 }
 
+/// Proposal threshold.
+#[derive(Copy, Debug, Clone, PartialEq, Eq)]
+enum ProposalThreshold {
+    /// Require a specified amount of members to approve the proposal.
+    Specified(MemberCount),
+    /// Require all members to approve the proposal.
+    All(MemberCount),
+}
+
+impl ProposalThreshold {
+    fn member_count(self) -> MemberCount {
+        match self {
+            Self::Specified(threshold) => threshold,
+            Self::All(threshold) => threshold,
+        }
+    }
+
+    fn is_all(&self) -> bool {
+        matches!(self, Self::All(_))
+    }
+}
+
+impl From<ProposalThreshold> for MemberCount {
+    fn from(threshold: ProposalThreshold) -> Self {
+        threshold.member_count()
+    }
+}
+
 impl<AccountId, BlockNumber> Votes<AccountId, BlockNumber>
 where
+    AccountId: FullCodec + 'static,
     BlockNumber: Saturating + PartialOrd + Copy,
 {
-    /// Returns threshold for the given proposal based on a system state.
+    /// Returns required threshold for the given proposal based on a system state.
     ///
     /// It might be
     /// - the threshold specified when the proposal was created if this proposal exists for more
     ///   than `ShortTimeProposal` blocks
-    /// - amount of current seats if the proposal was created recently
-    fn get_required_threshold<I, T>(&self, seats: MemberCount) -> (MemberCount, bool)
+    /// - amount of current members if the proposal was created recently
+    fn required_threshold<I, T>(&self) -> ProposalThreshold
     where
         I: 'static,
         T: Config<I, BlockNumber = BlockNumber, AccountId = AccountId>,
@@ -184,17 +214,21 @@ where
         let current_block = <frame_system::Pallet<T>>::block_number();
         let short_proposal_blocks = T::ShortTimeProposal::get();
 
-        let start_block = self.get_start_block::<I, T>();
+        let start_block = self.start_block::<I, T>();
 
-        if current_block.saturating_sub(start_block) >= short_proposal_blocks {
-            (self.threshold, false)
-        } else {
-            (seats.max(self.threshold), true)
-        }
+        (current_block.saturating_sub(start_block) >= short_proposal_blocks)
+            .then_some(ProposalThreshold::Specified(self.threshold))
+            .unwrap_or_else(move || {
+                let value = self
+                    .threshold
+                    .max(Members::<T, I>::decode_len().unwrap_or_default() as MemberCount);
+
+                ProposalThreshold::All(value)
+            })
     }
 
     /// Returns block number when the proposal for this voting was added.
-    fn get_start_block<I, T>(&self) -> BlockNumber
+    fn start_block<I, T>(&self) -> BlockNumber
     where
         I: 'static,
         T: Config<I, BlockNumber = BlockNumber, AccountId = AccountId>,
@@ -880,9 +914,10 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
         let mut no_votes = voting.nays.len() as MemberCount;
         let mut yes_votes = voting.ayes.len() as MemberCount;
         let seats = Self::members().len() as MemberCount;
-        let (threshold, is_short_time) = voting.get_required_threshold::<I, T>(seats);
-        let approved = yes_votes >= threshold;
-        let disapproved = seats.saturating_sub(no_votes) < threshold;
+        let required_threshold = voting.required_threshold::<I, T>();
+        let threshold_member_count = required_threshold.member_count();
+        let approved = yes_votes >= threshold_member_count;
+        let disapproved = seats.saturating_sub(no_votes) < threshold_member_count;
         // Allow (dis-)approving the proposal as soon as there are enough votes.
         if approved {
             let (proposal, len) = Self::validate_and_get_proposal(
@@ -924,7 +959,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 
         // Only allow actual closing of the proposal after the voting period has ended.
         ensure!(
-            frame_system::Pallet::<T>::block_number() >= voting.end && !is_short_time,
+            frame_system::Pallet::<T>::block_number() >= voting.end && !required_threshold.is_all(),
             Error::<T, I>::TooEarly
         );
 
@@ -938,7 +973,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
             true => yes_votes += abstentions,
             false => no_votes += abstentions,
         }
-        let approved = yes_votes >= threshold;
+        let approved = yes_votes >= threshold_member_count;
 
         if approved {
             let (proposal, len) = Self::validate_and_get_proposal(
