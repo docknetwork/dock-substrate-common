@@ -216,7 +216,7 @@ fn close_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(1), hash, 0, true));
@@ -289,7 +289,7 @@ fn proposal_weight_limit_works_on_approve() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(1), hash, 0, true));
@@ -330,7 +330,7 @@ fn proposal_weight_limit_ignored_on_disapprove() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         // No votes, this proposal wont pass
@@ -362,7 +362,7 @@ fn close_with_prime_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
 
@@ -431,7 +431,7 @@ fn close_with_voting_prime_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(1), hash, 0, true));
@@ -503,7 +503,7 @@ fn close_with_no_prime_but_majority_works() {
         assert_ok!(CollectiveMajority::propose(
             Origin::signed(1),
             5,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(CollectiveMajority::vote(Origin::signed(1), hash, 0, true));
@@ -576,7 +576,7 @@ fn removal_of_old_voters_votes_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(1), hash, 0, true));
@@ -609,7 +609,7 @@ fn removal_of_old_voters_votes_works() {
         assert_ok!(Collective::propose(
             Origin::signed(2),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(2), hash, 1, true));
@@ -648,7 +648,7 @@ fn removal_of_old_voters_votes_works_with_set_members() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(1), hash, 0, true));
@@ -686,7 +686,7 @@ fn removal_of_old_voters_votes_works_with_set_members() {
         assert_ok!(Collective::propose(
             Origin::signed(2),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(2), hash, 1, true));
@@ -777,7 +777,7 @@ fn limit_active_proposals() {
             Collective::propose(
                 Origin::signed(1),
                 3,
-                Box::new(proposal.clone()),
+                Box::new(proposal),
                 proposal_len
             ),
             Error::<Test, Instance1>::TooManyProposals
@@ -840,7 +840,7 @@ fn motions_ignoring_non_collective_proposals_works() {
             Collective::propose(
                 Origin::signed(42),
                 3,
-                Box::new(proposal.clone()),
+                Box::new(proposal),
                 proposal_len
             ),
             Error::<Test, Instance1>::NotMember
@@ -857,7 +857,7 @@ fn motions_ignoring_non_collective_votes_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_noop!(
@@ -877,7 +877,7 @@ fn motions_ignoring_bad_index_collective_vote_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_noop!(
@@ -897,7 +897,7 @@ fn motions_vote_after_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         // Initially there a no votes when the motion is proposed.
@@ -1063,7 +1063,7 @@ fn motions_reproposing_disapproved_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_eq!(*Collective::proposals(), vec![hash]);
@@ -1142,7 +1142,7 @@ fn motions_approval_with_enough_votes_and_lower_voting_threshold_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_ok!(Collective::vote(Origin::signed(1), hash, 1, true));
@@ -1215,7 +1215,7 @@ fn motions_disapproval_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         System::set_block_number(5);
@@ -1275,7 +1275,7 @@ fn motions_approval_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         System::set_block_number(5);
@@ -1339,7 +1339,7 @@ fn motion_with_no_votes_closes_with_disapproval() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             3,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         assert_eq!(
@@ -1401,7 +1401,7 @@ fn close_disapprove_does_not_care_about_weight_or_len() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         System::set_block_number(5);
@@ -1440,7 +1440,7 @@ fn disapprove_proposal_works() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             2,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
         // Proposal would normally succeed
@@ -1600,51 +1600,51 @@ fn short_time_proposal() {
         assert_ok!(Collective::propose(
             Origin::signed(1),
             4,
-            Box::new(proposal.clone()),
+            Box::new(proposal),
             proposal_len
         ));
-        assert_ok!(Collective::vote(Origin::signed(1), hash.clone(), 0, true));
-        assert_ok!(Collective::vote(Origin::signed(2), hash.clone(), 0, true));
+        assert_ok!(Collective::vote(Origin::signed(1), hash, 0, true));
+        assert_ok!(Collective::vote(Origin::signed(2), hash, 0, true));
 
         System::set_block_number(4);
         assert_noop!(
             Collective::close(
                 Origin::signed(4),
-                hash.clone(),
+                hash,
                 0,
                 proposal_weight,
                 proposal_len
             ),
             Error::<Test, Instance1>::TooEarly
         );
-        assert_ok!(Collective::vote(Origin::signed(3), hash.clone(), 0, true));
+        assert_ok!(Collective::vote(Origin::signed(3), hash, 0, true));
         assert_noop!(
             Collective::close(
                 Origin::signed(4),
-                hash.clone(),
+                hash,
                 0,
                 proposal_weight,
                 proposal_len
             ),
             Error::<Test, Instance1>::TooEarly
         );
-        assert_ok!(Collective::vote(Origin::signed(4), hash.clone(), 0, true));
+        assert_ok!(Collective::vote(Origin::signed(4), hash, 0, true));
         assert_noop!(
             Collective::close(
                 Origin::signed(4),
-                hash.clone(),
+                hash,
                 0,
                 proposal_weight,
                 proposal_len
             ),
             Error::<Test, Instance1>::TooEarly
         );
-        assert_ok!(Collective::vote(Origin::signed(5), hash.clone(), 0, true));
-        assert_ok!(Collective::vote(Origin::signed(6), hash.clone(), 0, true));
+        assert_ok!(Collective::vote(Origin::signed(5), hash, 0, true));
+        assert_ok!(Collective::vote(Origin::signed(6), hash, 0, true));
 
         assert_ok!(Collective::close(
             Origin::signed(4),
-            hash.clone(),
+            hash,
             0,
             proposal_weight,
             proposal_len
@@ -1658,7 +1658,7 @@ fn short_time_proposal() {
                     event: Event::Collective(CollectiveEvent::Proposed {
                         account: 1,
                         proposal_index: 0,
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         threshold: 4
                     }),
                     topics: vec![]
@@ -1667,7 +1667,7 @@ fn short_time_proposal() {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Voted {
                         account: 1,
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         voted: true,
                         yes: 1,
                         no: 0
@@ -1678,7 +1678,7 @@ fn short_time_proposal() {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Voted {
                         account: 2,
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         voted: true,
                         yes: 2,
                         no: 0
@@ -1689,7 +1689,7 @@ fn short_time_proposal() {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Voted {
                         account: 3,
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         voted: true,
                         yes: 3,
                         no: 0
@@ -1700,7 +1700,7 @@ fn short_time_proposal() {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Voted {
                         account: 4,
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         voted: true,
                         yes: 4,
                         no: 0
@@ -1711,7 +1711,7 @@ fn short_time_proposal() {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Voted {
                         account: 5,
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         voted: true,
                         yes: 5,
                         no: 0
@@ -1722,7 +1722,7 @@ fn short_time_proposal() {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Voted {
                         account: 6,
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         voted: true,
                         yes: 6,
                         no: 0
@@ -1732,7 +1732,7 @@ fn short_time_proposal() {
                 EventRecord {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Closed {
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         yes: 6,
                         no: 0
                     }),
@@ -1741,14 +1741,14 @@ fn short_time_proposal() {
                 EventRecord {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Approved {
-                        proposal_hash: hash.into()
+                        proposal_hash: hash
                     }),
                     topics: vec![]
                 },
                 EventRecord {
                     phase: Phase::Initialization,
                     event: Event::Collective(CollectiveEvent::Executed {
-                        proposal_hash: hash.into(),
+                        proposal_hash: hash,
                         result: Ok(())
                     }),
                     topics: vec![]

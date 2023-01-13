@@ -328,7 +328,7 @@ pub(crate) const LOG_TARGET: &str = "runtime::staking";
 macro_rules! log {
 	($level:tt, $patter:expr $(, $values:expr)* $(,)?) => {
 		log::$level!(
-			target: crate::LOG_TARGET,
+			target: $crate::LOG_TARGET,
 			concat!("[{:?}] 💸 ", $patter), <frame_system::Pallet<T>>::block_number() $(, $values)*
 		)
 	};
@@ -368,7 +368,7 @@ pub struct ActiveEraInfo {
 /// Reward points of an era. Used to split era total payout between validators.
 ///
 /// This points will be used to reward validators and their respective nominators.
-#[derive(PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
+#[derive(PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub struct EraRewardPoints<AccountId: Ord> {
     /// Total number of points. Equals the sum of reward points for each validator.
     pub total: RewardPoint,
@@ -645,7 +645,7 @@ impl<T: Config> StakingLedger<T> {
             .min(*slash_remaining);
 
             // slash out from *target exactly `slash_from_target`.
-            *target = *target - slash_from_target;
+            *target -= slash_from_target;
             if *target < minimum_balance {
                 // Slash the rest of the target if it's dust. This might cause the last chunk to be
                 // slightly under-slashed, by at most `MaxUnlockingChunks * ED`, which is not a big
@@ -812,7 +812,7 @@ impl<AccountId> SessionInterface<AccountId> for () {
         Vec::new()
     }
     fn prune_historical_up_to(_: SessionIndex) {
-        ()
+        
     }
 }
 

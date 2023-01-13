@@ -337,7 +337,7 @@ fn rewards_should_work() {
             assert_eq_error_rate!(Balances::total_balance(&11), init_balance_11, 2);
             assert_eq_error_rate!(
                 Balances::total_balance(&20),
-                init_balance_20 + part_for_20 * total_payout_0 * 1 / 3,
+                init_balance_20 + part_for_20 * total_payout_0 / 3,
                 2,
             );
             assert_eq_error_rate!(Balances::total_balance(&21), init_balance_21, 2);
@@ -345,7 +345,7 @@ fn rewards_should_work() {
                 Balances::total_balance(&100),
                 init_balance_100
                     + part_for_100_from_10 * total_payout_0 * 2 / 3
-                    + part_for_100_from_20 * total_payout_0 * 1 / 3,
+                    + part_for_100_from_20 * total_payout_0 / 3,
                 2
             );
             assert_eq_error_rate!(Balances::total_balance(&101), init_balance_101, 2);
@@ -375,7 +375,7 @@ fn rewards_should_work() {
             assert_eq_error_rate!(Balances::total_balance(&11), init_balance_11, 2);
             assert_eq_error_rate!(
                 Balances::total_balance(&20),
-                init_balance_20 + part_for_20 * total_payout_0 * 1 / 3,
+                init_balance_20 + part_for_20 * total_payout_0 / 3,
                 2,
             );
             assert_eq_error_rate!(Balances::total_balance(&21), init_balance_21, 2);
@@ -383,7 +383,7 @@ fn rewards_should_work() {
                 Balances::total_balance(&100),
                 init_balance_100
                     + part_for_100_from_10 * (total_payout_0 * 2 / 3 + total_payout_1)
-                    + part_for_100_from_20 * total_payout_0 * 1 / 3,
+                    + part_for_100_from_20 * total_payout_0 / 3,
                 2
             );
             assert_eq_error_rate!(Balances::total_balance(&101), init_balance_101, 2);
@@ -543,7 +543,7 @@ fn no_candidate_emergency_condition() {
                 commission: Perbill::one(),
                 ..Default::default()
             };
-            <Staking as crate::Store>::Validators::insert(11, prefs.clone());
+            <Staking as crate::Store>::Validators::insert(11, prefs);
 
             // set the minimum validator count.
             <Staking as crate::Store>::MinimumValidatorCount::put(10);
@@ -748,7 +748,7 @@ fn nominators_also_get_slashed_pro_rata() {
         // 11 goes offline
         on_offence_now(
             &[OffenceDetails {
-                offender: (11, initial_exposure.clone()),
+                offender: (11, initial_exposure),
                 reporters: vec![],
             }],
             &[slash_percent],
@@ -3407,7 +3407,7 @@ fn remove_deferred() {
             // reported later, but deferred to start of era 4 as well.
             on_offence_in_era(
                 &[OffenceDetails {
-                    offender: (11, exposure.clone()),
+                    offender: (11, exposure),
                     reporters: vec![],
                 }],
                 &[Perbill::from_percent(15)],
@@ -3507,7 +3507,7 @@ fn remove_multi_deferred() {
 
             on_offence_now(
                 &[OffenceDetails {
-                    offender: (69, exposure.clone()),
+                    offender: (69, exposure),
                     reporters: vec![],
                 }],
                 &[Perbill::from_percent(25)],
@@ -3563,7 +3563,7 @@ fn slash_kicks_validators_not_nominators_and_disables_nominator_for_kicked_valid
 
         on_offence_now(
             &[OffenceDetails {
-                offender: (11, exposure_11.clone()),
+                offender: (11, exposure_11),
                 reporters: vec![],
             }],
             &[Perbill::from_percent(10)],
@@ -3619,7 +3619,7 @@ fn non_slashable_offence_doesnt_disable_validator() {
         // offence with no slash associated
         on_offence_now(
             &[OffenceDetails {
-                offender: (11, exposure_11.clone()),
+                offender: (11, exposure_11),
                 reporters: vec![],
             }],
             &[Perbill::zero()],
@@ -3628,7 +3628,7 @@ fn non_slashable_offence_doesnt_disable_validator() {
         // offence that slashes 25% of the bond
         on_offence_now(
             &[OffenceDetails {
-                offender: (21, exposure_21.clone()),
+                offender: (21, exposure_21),
                 reporters: vec![],
             }],
             &[Perbill::from_percent(25)],
@@ -3655,7 +3655,7 @@ fn slashing_independent_of_disabling_validator() {
         // offence with no slash associated, BUT disabling
         on_offence_in_era(
             &[OffenceDetails {
-                offender: (11, exposure_11.clone()),
+                offender: (11, exposure_11),
                 reporters: vec![],
             }],
             &[Perbill::zero()],
@@ -3666,7 +3666,7 @@ fn slashing_independent_of_disabling_validator() {
         // offence that slashes 25% of the bond, BUT not disabling
         on_offence_in_era(
             &[OffenceDetails {
-                offender: (21, exposure_21.clone()),
+                offender: (21, exposure_21),
                 reporters: vec![],
             }],
             &[Perbill::from_percent(25)],
@@ -3704,7 +3704,7 @@ fn offence_threshold_triggers_new_era() {
 
             on_offence_now(
                 &[OffenceDetails {
-                    offender: (11, exposure_11.clone()),
+                    offender: (11, exposure_11),
                     reporters: vec![],
                 }],
                 &[Perbill::zero()],
@@ -3714,7 +3714,7 @@ fn offence_threshold_triggers_new_era() {
 
             on_offence_now(
                 &[OffenceDetails {
-                    offender: (21, exposure_21.clone()),
+                    offender: (21, exposure_21),
                     reporters: vec![],
                 }],
                 &[Perbill::zero()],
@@ -3724,7 +3724,7 @@ fn offence_threshold_triggers_new_era() {
 
             on_offence_now(
                 &[OffenceDetails {
-                    offender: (31, exposure_31.clone()),
+                    offender: (31, exposure_31),
                     reporters: vec![],
                 }],
                 &[Perbill::zero()],
@@ -3757,7 +3757,7 @@ fn disabled_validators_are_kept_disabled_for_whole_era() {
 
             on_offence_now(
                 &[OffenceDetails {
-                    offender: (21, exposure_21.clone()),
+                    offender: (21, exposure_21),
                     reporters: vec![],
                 }],
                 &[Perbill::from_percent(25)],
@@ -3777,7 +3777,7 @@ fn disabled_validators_are_kept_disabled_for_whole_era() {
             // validator 10 should now get disabled
             on_offence_now(
                 &[OffenceDetails {
-                    offender: (11, exposure_11.clone()),
+                    offender: (11, exposure_11),
                     reporters: vec![],
                 }],
                 &[Perbill::from_percent(25)],
@@ -3893,7 +3893,7 @@ fn zero_slash_keeps_nominators() {
 
         on_offence_now(
             &[OffenceDetails {
-                offender: (11, exposure.clone()),
+                offender: (11, exposure),
                 reporters: vec![],
             }],
             &[Perbill::from_percent(0)],
@@ -3949,7 +3949,7 @@ fn six_session_delay() {
             );
             assert_eq!(
                 <Staking as SessionManager<_>>::new_session(init_session + 6),
-                Some(val_set.clone())
+                Some(val_set)
             );
 
             <Staking as SessionManager<_>>::end_session(init_session);

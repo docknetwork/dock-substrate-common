@@ -132,7 +132,7 @@ type NegativeImbalanceOf<T> = <<T as Config>::Currency as Currency<
 >>::NegativeImbalance;
 
 /// An indication that the renouncing account currently has which of the below roles.
-#[derive(Encode, Decode, Clone, PartialEq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub enum Renouncing {
     /// A member is renouncing.
     Member,
@@ -158,7 +158,7 @@ impl Default for PalletStorageVersion {
 }
 
 /// An active voter.
-#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo)]
 pub struct Voter<AccountId, Balance> {
     /// The members being backed.
     pub votes: Vec<AccountId>,
@@ -181,7 +181,7 @@ impl<AccountId, Balance: Default> Default for Voter<AccountId, Balance> {
 }
 
 /// A holder of a seat as either a member or a runner-up.
-#[derive(Encode, Decode, Clone, Default, RuntimeDebug, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Clone, Default, RuntimeDebug, PartialEq, Eq, TypeInfo)]
 pub struct SeatHolder<AccountId, Balance> {
     /// The holder.
     pub who: AccountId,
@@ -616,7 +616,7 @@ pub mod pallet {
             _num_voters: u32,
             _num_defunct: u32,
         ) -> DispatchResult {
-            let _ = ensure_root(origin)?;
+            ensure_root(origin)?;
             <Voting<T>>::iter()
                 .filter(|(_, x)| Self::is_defunct_voter(&x.votes))
                 .for_each(|(dv, _)| Self::do_remove_voter(&dv));
@@ -1496,7 +1496,7 @@ mod tests {
             self.balance_factor = factor;
             self
         }
-        pub fn build_and_execute(self, test: impl FnOnce() -> ()) {
+        pub fn build_and_execute(self, test: impl FnOnce()) {
             sp_tracing::try_init_simple();
             MEMBERS.with(|m| {
                 *m.borrow_mut() = self
@@ -1596,13 +1596,13 @@ mod tests {
     }
 
     fn ensure_members_sorted() {
-        let mut members = Elections::members().clone();
+        let mut members = Elections::members();
         members.sort_by_key(|m| m.who);
         assert_eq!(Elections::members(), members);
     }
 
     fn ensure_candidates_sorted() {
-        let mut candidates = Elections::candidates().clone();
+        let mut candidates = Elections::candidates();
         candidates.sort_by_key(|(c, _, _)| *c);
         assert_eq!(Elections::candidates(), candidates);
     }
