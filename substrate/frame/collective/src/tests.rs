@@ -774,12 +774,7 @@ fn limit_active_proposals() {
         let proposal = make_proposal(MaxProposals::get() as u64 + 1);
         let proposal_len: u32 = proposal.using_encoded(|p| p.len() as u32);
         assert_noop!(
-            Collective::propose(
-                Origin::signed(1),
-                3,
-                Box::new(proposal),
-                proposal_len
-            ),
+            Collective::propose(Origin::signed(1), 3, Box::new(proposal), proposal_len),
             Error::<Test, Instance1>::TooManyProposals
         );
     })
@@ -837,12 +832,7 @@ fn motions_ignoring_non_collective_proposals_works() {
         let proposal = make_proposal(42);
         let proposal_len: u32 = proposal.using_encoded(|p| p.len() as u32);
         assert_noop!(
-            Collective::propose(
-                Origin::signed(42),
-                3,
-                Box::new(proposal),
-                proposal_len
-            ),
+            Collective::propose(Origin::signed(42), 3, Box::new(proposal), proposal_len),
             Error::<Test, Instance1>::NotMember
         );
     });
@@ -1608,35 +1598,17 @@ fn short_time_proposal() {
 
         System::set_block_number(4);
         assert_noop!(
-            Collective::close(
-                Origin::signed(4),
-                hash,
-                0,
-                proposal_weight,
-                proposal_len
-            ),
+            Collective::close(Origin::signed(4), hash, 0, proposal_weight, proposal_len),
             Error::<Test, Instance1>::TooEarly
         );
         assert_ok!(Collective::vote(Origin::signed(3), hash, 0, true));
         assert_noop!(
-            Collective::close(
-                Origin::signed(4),
-                hash,
-                0,
-                proposal_weight,
-                proposal_len
-            ),
+            Collective::close(Origin::signed(4), hash, 0, proposal_weight, proposal_len),
             Error::<Test, Instance1>::TooEarly
         );
         assert_ok!(Collective::vote(Origin::signed(4), hash, 0, true));
         assert_noop!(
-            Collective::close(
-                Origin::signed(4),
-                hash,
-                0,
-                proposal_weight,
-                proposal_len
-            ),
+            Collective::close(Origin::signed(4), hash, 0, proposal_weight, proposal_len),
             Error::<Test, Instance1>::TooEarly
         );
         assert_ok!(Collective::vote(Origin::signed(5), hash, 0, true));

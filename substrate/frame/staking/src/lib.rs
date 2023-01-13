@@ -811,9 +811,7 @@ impl<AccountId> SessionInterface<AccountId> for () {
     fn validators() -> Vec<AccountId> {
         Vec::new()
     }
-    fn prune_historical_up_to(_: SessionIndex) {
-        
-    }
+    fn prune_historical_up_to(_: SessionIndex) {}
 }
 
 /// Handler for determining how much of a balance should be paid out on the current era.
