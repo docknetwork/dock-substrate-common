@@ -15,7 +15,7 @@ use sp_runtime::{
 use std::sync::Arc;
 
 #[rpc(server, client)]
-pub trait PriceFeedApi<BlockHash, Number, MaxCurrencyLen: Get<u32>> {
+pub trait PriceFeedApi<BlockHash, Number, MaxSymbolBytesLen: Get<u32>> {
     /// Gets the price of currency pair
     #[method(name = "price_feed_price")]
     async fn price(
@@ -57,14 +57,14 @@ impl<C, P> PriceFeed<C, P> {
 }
 
 #[async_trait]
-impl<C, Block, MaxCurrencyLen>
-    PriceFeedApiServer<<Block as BlockT>::Hash, NumberFor<Block>, MaxCurrencyLen>
+impl<C, Block, MaxSymbolBytesLen>
+    PriceFeedApiServer<<Block as BlockT>::Hash, NumberFor<Block>, MaxSymbolBytesLen>
     for PriceFeed<C, Block>
 where
     Block: BlockT,
-    MaxCurrencyLen: Get<u32> + Send + Sync + 'static,
+    MaxSymbolBytesLen: Get<u32> + Send + Sync + 'static,
     C: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    C::Api: PriceFeedRuntimeApi<Block, NumberFor<Block>, MaxCurrencyLen>,
+    C::Api: PriceFeedRuntimeApi<Block, NumberFor<Block>, MaxSymbolBytesLen>,
 {
     async fn price(
         &self,

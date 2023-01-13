@@ -5,11 +5,13 @@ use frame_support::{
     traits::{ConstU32, Everything},
 };
 use frame_system as system;
+use scale_info::prelude::string::String;
 use sp_core::{H256, U256};
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
 };
+use sp_std::prelude::*;
 
 // Configure a mock runtime to test the pallet.
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -82,7 +84,7 @@ impl timestamp::Config for Test {
 }
 
 impl price_feed::Config for Test {
-    type MaxCurrencyLen = ConstU32<4>;
+    type MaxSymbolBytesLen = ConstU32<4>;
     type Event = ();
 }
 

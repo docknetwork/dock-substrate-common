@@ -1,10 +1,18 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use codec::{Decode, Encode};
-use frame_support::{traits::Get, *};
+use frame_support::traits::Get;
+use sp_std::vec::*;
 
 pub mod v1 {
     use super::*;
+    use crate::{
+        pallet::{Config, StorageVersion},
+        Releases,
+    };
+
+    use frame_support::{decl_module, decl_storage, weights::Weight};
+    use scale_info::TypeInfo;
+    use sp_core::H160;
+    use sp_std::{prelude::*, vec};
 
     /// Function and event param types.
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
@@ -32,16 +40,6 @@ pub mod v1 {
         /// Tuple containing different types
         Tuple(Vec<ParamType>),*/
     }
-
-    use crate::{
-        pallet::{Config, StorageVersion},
-        Releases,
-    };
-
-    use frame_support::weights::Weight;
-    use scale_info::TypeInfo;
-    use sp_core::H160;
-    use sp_std::prelude::*;
 
     const DUMMY_SOURCE: H160 = H160::zero();
 

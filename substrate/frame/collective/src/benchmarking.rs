@@ -394,6 +394,7 @@ benchmarks_instance_pallet! {
                 Box::new(proposal.clone()),
                 bytes_in_storage,
             )?;
+            System::<T>::set_block_number(System::<T>::block_number() + 4u8.into());
             last_hash = T::Hashing::hash_of(&proposal);
         }
 

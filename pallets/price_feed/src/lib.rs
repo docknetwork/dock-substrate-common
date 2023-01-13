@@ -51,7 +51,7 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         #[pallet::constant]
-        type MaxCurrencyLen: Get<u32>;
+        type MaxSymbolBytesLen: Get<u32>;
 
         /// The overarching event type.
         type Event: From<Event<Self>>
@@ -70,15 +70,15 @@ mod pallet {
         T: Config,
     {
         OperatorAdded(
-            StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             <T as system::Config>::AccountId,
         ),
         OperatorRemoved(
-            StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             <T as system::Config>::AccountId,
         ),
         PriceSet(
-            StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
+            StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             PriceRecord<<T as system::Config>::BlockNumber>,
             <T as system::Config>::AccountId,
         ),
@@ -97,7 +97,7 @@ mod pallet {
     pub type Operators<T: Config> = StorageDoubleMap<
         _,
         Twox64Concat,
-        StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
+        StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         Twox64Concat,
         <T as frame_system::Config>::AccountId,
         (),
@@ -111,7 +111,7 @@ mod pallet {
     pub type Prices<T: Config> = StorageMap<
         _,
         Twox64Concat,
-        StoredCurrencySymbolPair<String, String, T::MaxCurrencyLen>,
+        StoredCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         PriceRecord<T::BlockNumber>,
         OptionQuery,
     >;
@@ -243,7 +243,7 @@ mod pallet {
         {
             currency_pair
                 .try_into()
-                .map(Self::price::<StoredCurrencySymbolPair<_, _, T::MaxCurrencyLen>>)
+                .map(Self::price::<StoredCurrencySymbolPair<_, _, T::MaxSymbolBytesLen>>)
         }
     }
 }
