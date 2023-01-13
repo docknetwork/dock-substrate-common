@@ -1,1 +1,1 @@
-Common libraries and pallets used by dock-substrate and its dependencies.
+Common libraries, pallets and modified substrate modules used by dock-substrate and its dependencies.

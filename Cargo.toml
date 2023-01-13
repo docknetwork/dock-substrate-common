@@ -5,5 +5,8 @@ members = [
     "libs/arith_utils",
     "libs/price_provider",
     "pallets/price_feed",
-    "pallets/price_feed/rpc"
+    "pallets/price_feed/rpc",
+    "substrate/frame/elections-phragmen",
+    "substrate/frame/collective",
+    "substrate/frame/staking"
 ]
