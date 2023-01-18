@@ -169,7 +169,7 @@ use frame_support::{
 use scale_info::TypeInfo;
 use sp_runtime::{
     traits::{Bounded, Dispatchable, Hash, One, Saturating, StaticLookup, Zero},
-    ArithmeticError, DispatchResult, RuntimeDebug,
+    ArithmeticError, DispatchErrorWithPostInfo, DispatchResult, RuntimeDebug,
 };
 use sp_std::prelude::*;
 
@@ -732,9 +732,9 @@ pub mod pallet {
         },
         /// A proposal got canceled.
         ProposalCanceled { prop_index: PropIndex },
-        /// Locked deposit paid back to the account.
-        LockedDepositPaidBack {
-            who: T::AccountId,
+        /// Locked deposit unreserved to the account.
+        LockedDepositUnreserved {
+            recipient: T::AccountId,
             deposit: BalanceOf<T>,
         },
     }
@@ -1221,7 +1221,7 @@ pub mod pallet {
         /// Emits `PreimageNoted`.
         ///
         /// Weight: `O(E)` with E size of `encoded_proposal` (protected by a required deposit).
-        #[pallet::weight(T::WeightInfo::note_preimage(encoded_proposal.len() as u32).saturating_mul(100))]
+        #[pallet::weight(T::WeightInfo::note_preimage(encoded_proposal.len() as u32))]
         pub fn note_preimage(origin: OriginFor<T>, encoded_proposal: Vec<u8>) -> DispatchResult {
             Self::note_preimage_inner(ensure_signed(origin)?, encoded_proposal)?;
             Ok(())
@@ -1229,7 +1229,7 @@ pub mod pallet {
 
         /// Same as `note_preimage` but origin is `OperationalPreimageOrigin`.
         #[pallet::weight((
-			T::WeightInfo::note_preimage(encoded_proposal.len() as u32).saturating_mul(100),
+			T::WeightInfo::note_preimage(encoded_proposal.len() as u32),
 			DispatchClass::Operational,
 		))]
         pub fn note_preimage_operational(
@@ -1550,21 +1550,28 @@ pub mod pallet {
 
         /// Unreserves locked deposits.
         /// Can be called from any account with the block number lower or equal to the current.
-        #[pallet::weight(50_000_000)]
+        #[pallet::weight(1_000_000_000)]
         pub fn unreserve_locked_deposits(
             origin: OriginFor<T>,
             block_number: T::BlockNumber,
         ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
 
+            let base_weight = T::DbWeight::get().reads(1);
             ensure!(
                 block_number <= frame_system::Pallet::<T>::block_number(),
-                "Deposits for the given block number are still locked"
+                DispatchErrorWithPostInfo {
+                    post_info: PostDispatchInfo {
+                        actual_weight: Some(base_weight),
+                        pays_fee: Pays::Yes
+                    },
+                    error: "Deposits for the given block number are still locked".into()
+                }
             );
             let payback_weight = Self::unreserve_locked_deposits_(block_number);
 
             Ok(PostDispatchInfo {
-                actual_weight: Some(payback_weight.saturating_add(T::DbWeight::get().reads(1))),
+                actual_weight: Some(payback_weight + base_weight),
                 pays_fee: Pays::Yes,
             }
             .into())
@@ -1586,9 +1593,9 @@ impl<T: Config> Pallet<T> {
 
         let unlocked_deposits = LockedDeposits::<T>::drain_prefix(block_number);
         for (deposit_payback_target, deposit) in unlocked_deposits {
-            let who = deposit_payback_target.unreserve::<T>(deposit);
+            let recipient = deposit_payback_target.unreserve::<T>(deposit);
 
-            Self::deposit_event(Event::LockedDepositPaidBack { who, deposit });
+            Self::deposit_event(Event::LockedDepositUnreserved { recipient, deposit });
 
             weight += T::DbWeight::get().reads_writes(3, 3);
         }

@@ -17,6 +17,7 @@
 
 //! The preimage tests.
 
+use frame_support::weights::{Pays, RuntimeDbWeight};
 use frame_system::{EventRecord, Phase};
 
 use super::*;
@@ -132,8 +133,8 @@ fn preimage_deposit_should_be_locked_if_turnout_is_lower_than_required() {
                     phase: Phase::Initialization,
                     topics: Default::default(),
                     event: Event::Democracy(
-                        crate::Event::LockedDepositPaidBack {
-                            who: 6,
+                        crate::Event::LockedDepositUnreserved {
+                            recipient: 6,
                             deposit: 12
                         }
                         .into()
@@ -186,7 +187,19 @@ fn preimage_deposit_should_be_locked_if_turnout_is_lower_than_required_and_then_
                     Origin::signed(3),
                     DepositLockStrategy::get().target_block_from(locked_in)
                 ),
-                DispatchError::Other("Deposits for the given block number are still locked")
+                DispatchErrorWithPostInfo {
+                    post_info: PostDispatchInfo {
+                        actual_weight:
+                            Some(
+                                <<Test as frame_system::Config>::DbWeight as Get<
+                                    RuntimeDbWeight,
+                                >>::get()
+                                .reads(1)
+                            ),
+                        pays_fee: Pays::Yes
+                    },
+                    error: "Deposits for the given block number are still locked".into()
+                }
             );
             next_block();
 
