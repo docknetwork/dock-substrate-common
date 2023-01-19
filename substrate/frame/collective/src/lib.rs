@@ -167,25 +167,27 @@ pub struct Votes<AccountId, BlockNumber> {
     end: BlockNumber,
 }
 
-/// Proposal threshold.
+/// Proposal threshold. Can be either short time or long lived.
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
 enum ProposalThreshold {
-    /// Require a specified amount of members to approve the proposal.
-    Specified(MemberCount),
-    /// Require all members to approve the proposal.
-    All(MemberCount),
+    /// The proposal lives longer than the `ShortTimeProposal` blocks. Requires a specified amount of members to approve the proposal
+    LongLived(MemberCount),
+    /// The proposal lives shorter than `ShortTimeProposal` blocks. Require all members to approve the proposal.
+    ShortTime(MemberCount),
 }
 
 impl ProposalThreshold {
+    /// Returns the member count required for the proposal to be approved.
     fn member_count(self) -> MemberCount {
         match self {
-            Self::Specified(threshold) => threshold,
-            Self::All(threshold) => threshold,
+            Self::LongLived(threshold) => threshold,
+            Self::ShortTime(threshold) => threshold,
         }
     }
 
-    fn is_all(&self) -> bool {
-        matches!(self, Self::All(_))
+    /// Does this proposal exists for more than `ShortTimeProposal` or not.
+    fn is_short_time(&self) -> bool {
+        matches!(self, Self::ShortTime(_))
     }
 }
 
@@ -217,13 +219,13 @@ where
         let start_block = self.start_block::<I, T>();
 
         (current_block.saturating_sub(start_block) >= short_proposal_blocks)
-            .then_some(ProposalThreshold::Specified(self.threshold))
+            .then_some(ProposalThreshold::LongLived(self.threshold))
             .unwrap_or_else(move || {
                 let value = self
                     .threshold
                     .max(Members::<T, I>::decode_len().unwrap_or_default() as MemberCount);
 
-                ProposalThreshold::All(value)
+                ProposalThreshold::ShortTime(value)
             })
     }
 
@@ -959,7 +961,8 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 
         // Only allow actual closing of the proposal after the voting period has ended.
         ensure!(
-            frame_system::Pallet::<T>::block_number() >= voting.end && !required_threshold.is_all(),
+            frame_system::Pallet::<T>::block_number() >= voting.end
+                && !required_threshold.is_short_time(),
             Error::<T, I>::TooEarly
         );
 
