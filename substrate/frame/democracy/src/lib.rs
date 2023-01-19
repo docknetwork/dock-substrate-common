@@ -152,8 +152,11 @@
 #![recursion_limit = "256"]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::{Decode, Encode, Input};
+use core::num::NonZeroU32;
+
+use codec::{Decode, Encode, Input, MaxEncodedLen};
 use frame_support::{
+    dispatch::{DispatchError, DispatchResultWithPostInfo, PostDispatchInfo},
     ensure,
     traits::{
         defensive_prelude::*,
@@ -165,8 +168,8 @@ use frame_support::{
 };
 use scale_info::TypeInfo;
 use sp_runtime::{
-    traits::{Bounded, Dispatchable, Hash, Saturating, StaticLookup, Zero},
-    ArithmeticError, DispatchError, DispatchResult, RuntimeDebug,
+    traits::{Bounded, Dispatchable, Hash, One, Saturating, StaticLookup, Zero},
+    ArithmeticError, DispatchErrorWithPostInfo, DispatchResult, RuntimeDebug,
 };
 use sp_std::prelude::*;
 
@@ -240,6 +243,174 @@ enum Releases {
     V1,
 }
 
+/// Denotes the state of the deposit.
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+pub enum DepositState<BlockNumber> {
+    /// The deposit is locked until the block with the given number.
+    Locked(BlockNumber),
+    /// Deposit is unreserved.
+    Unreserved,
+}
+
+/// Deposit amount along with its current state.
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+pub struct DepositWithState<Balance, BlockNumber> {
+    deposit: Balance,
+    state: DepositState<BlockNumber>,
+}
+
+/// Denotes configuration to be used for locking preimage provider deposits.
+/// Lock will happen in case if proposal's turnout is less than `immediate_payback_turnout`.
+/// Target lock block number will be rounded to the closest higher value dividable
+/// by the `lock_unit` with zero remainder.
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+pub struct DepositLockConfig<T: Config> {
+    lock_unit: NonZeroU32,
+    lock_deposit_for_unit_amount: u32,
+    immediate_payback_turnout: BalanceOf<T>,
+}
+
+impl<T: Config> DepositLockConfig<T> {
+    /// Instantiates new `DepositLockConfig` using supplied `lock_unit` and `amount`.
+    ///
+    /// - `lock_unit` - number of blocks representing one tick to check payouts
+    /// - `lock_deposit_for_unit_amount` - amount of `lock_units` to lock deposit for
+    /// - `immediate_payback_turnout` - minimum amount of funds to be totally participating in the voting to unreserve
+    /// the preimage provider's deposit immediately after the execution happened.
+    pub const fn new(
+        lock_unit: u32,
+        lock_deposit_for_unit_amount: u32,
+        immediate_payback_turnout: BalanceOf<T>,
+    ) -> Self {
+        let lock_unit = match NonZeroU32::new(lock_unit) {
+            Some(value) => value,
+            _ => panic!("`lock_unit` can't be equal to zero"),
+        };
+
+        Self {
+            lock_unit,
+            lock_deposit_for_unit_amount,
+            immediate_payback_turnout,
+        }
+    }
+
+    /// Calculates target lock block using current block number provided by the system.
+    /// Target block number will be rounded to the closest higher value dividable
+    /// by the `lock_unit` with zero remainder.
+    fn target_block_from_current(&self) -> T::BlockNumber {
+        self.target_block_from(frame_system::Pallet::<T>::block_number())
+    }
+
+    /// Calculates target lock block using supplied block number.
+    /// Target block number will be rounded to the closest higher value dividable
+    /// by the `lock_unit` with zero remainder.
+    fn target_block_from(&self, number: T::BlockNumber) -> T::BlockNumber {
+        let lock_deposit_for_at_least_blocks = self
+            .lock_unit
+            .get()
+            .saturating_mul(self.lock_deposit_for_unit_amount.into())
+            .into();
+        let maybe_odd_target = number
+            .saturating_add(One::one())
+            .saturating_add(lock_deposit_for_at_least_blocks);
+        let rem = maybe_odd_target % self.lock_unit.get().into();
+
+        if !rem.is_zero() {
+            maybe_odd_target
+                .saturating_add(T::BlockNumber::from(self.lock_unit.get()).saturating_sub(rem))
+        } else {
+            maybe_odd_target
+        }
+    }
+
+    /// Whether should locked deposits be unreserved in the given block or not.
+    fn should_unreserve_in_block(&self, number: T::BlockNumber) -> bool {
+        (number % self.lock_unit.get().into()).is_zero()
+    }
+
+    /// Determines if the deposit for the given referendum should be locked.
+    fn should_lock_deposit(
+        &self,
+        ref_status: &ReferendumStatus<T::BlockNumber, T::Hash, BalanceOf<T>>,
+    ) -> bool {
+        ref_status.tally.turnout < self.immediate_payback_turnout
+    }
+}
+
+/// Denotes target account for the deposit payback.
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
+pub enum DepositPaybackTarget<AccountId> {
+    /// Target is the preimage provider.
+    Provider(AccountId),
+    /// Target is the beneficiary account.
+    Beneficiary { from: AccountId, to: AccountId },
+}
+
+impl<AccountId: Encode + Decode> DepositPaybackTarget<AccountId> {
+    /// Locks specified deposit amount based on the current block number returning lock target number.
+    fn lock_deposit<T: Config<AccountId = AccountId>>(
+        &self,
+        deposit: BalanceOf<T>,
+    ) -> T::BlockNumber
+    where
+        BalanceOf<T>: 'static,
+    {
+        let target_block = T::DepositLockStrategy::get().target_block_from_current();
+
+        LockedDeposits::<T>::mutate(
+            target_block,
+            self,
+            |deposit_opt: &mut Option<BalanceOf<T>>| {
+                deposit_opt.replace(deposit_opt.unwrap_or_default().saturating_add(deposit))
+            },
+        );
+
+        target_block
+    }
+
+    /// Unreserves supplied amount returning target account.
+    fn unreserve<T: Config<AccountId = AccountId>>(self, deposit: BalanceOf<T>) -> AccountId {
+        match self {
+            Self::Provider(provider) => {
+                let err_amount = T::Currency::unreserve(&provider, deposit);
+                debug_assert!(err_amount.is_zero());
+
+                provider
+            }
+            Self::Beneficiary { from, to } => {
+                let res =
+                    T::Currency::repatriate_reserved(&from, &to, deposit, BalanceStatus::Free);
+                debug_assert!(res.is_ok());
+
+                to
+            }
+        }
+    }
+
+    /// Handles supplied deposit amount: either unreserves or locks it based on the `lock_deposit` flag.
+    fn return_deposit<T: Config<AccountId = AccountId>>(
+        self,
+        lock: bool,
+        deposit: BalanceOf<T>,
+    ) -> DepositWithState<BalanceOf<T>, T::BlockNumber>
+    where
+        BalanceOf<T>: 'static,
+    {
+        let state = if lock {
+            let target_block = self.lock_deposit::<T>(deposit);
+
+            DepositState::Locked(target_block)
+        } else {
+            self.unreserve::<T>(deposit);
+
+            DepositState::Unreserved
+        };
+
+        DepositWithState { deposit, state }
+    }
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::{DispatchResult, *};
@@ -259,6 +430,11 @@ pub mod pallet {
         /// Currency type for this pallet.
         type Currency: ReservableCurrency<Self::AccountId>
             + LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
+
+        /// Denotes how long deposit should be locked in case if proposal turnout is less than
+        /// `immediate_payback_turnout`.
+        #[pallet::constant]
+        type DepositLockStrategy: Get<DepositLockConfig<Self>>;
 
         /// The period between a proposal being approved and enacted.
         ///
@@ -404,10 +580,26 @@ pub mod pallet {
         PreimageStatus<T::AccountId, BalanceOf<T>, T::BlockNumber>,
     >;
 
+    /// The deposit for the given proposal will be locked when the preimage will be removed.
+    #[pallet::storage]
+    pub type LockDepositFor<T: Config> = StorageMap<_, Identity, T::Hash, bool, ValueQuery>;
+
     /// The next free referendum index, aka the number of referenda started so far.
     #[pallet::storage]
     #[pallet::getter(fn referendum_count)]
     pub type ReferendumCount<T> = StorageValue<_, ReferendumIndex, ValueQuery>;
+
+    /// Deposits locked prior to the supplied block number.
+    #[pallet::storage]
+    pub type LockedDeposits<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        T::BlockNumber,
+        Twox64Concat,
+        DepositPaybackTarget<T::AccountId>,
+        BalanceOf<T>,
+        OptionQuery,
+    >;
 
     /// The lowest referendum index representing an unbaked referendum. Equal to
     /// `ReferendumCount` if there isn't a unbaked referendum.
@@ -549,7 +741,7 @@ pub mod pallet {
         PreimageUsed {
             proposal_hash: T::Hash,
             provider: T::AccountId,
-            deposit: BalanceOf<T>,
+            deposit_state: DepositWithState<BalanceOf<T>, T::BlockNumber>,
         },
         /// A proposal could not be executed because its preimage was invalid.
         PreimageInvalid {
@@ -565,7 +757,7 @@ pub mod pallet {
         PreimageReaped {
             proposal_hash: T::Hash,
             provider: T::AccountId,
-            deposit: BalanceOf<T>,
+            deposit_state: DepositWithState<BalanceOf<T>, T::BlockNumber>,
             reaper: T::AccountId,
         },
         /// A proposal_hash has been blacklisted permanently.
@@ -583,6 +775,11 @@ pub mod pallet {
         },
         /// A proposal got canceled.
         ProposalCanceled { prop_index: PropIndex },
+        /// Locked deposit unreserved to the account.
+        LockedDepositUnreserved {
+            recipient: T::AccountId,
+            deposit: BalanceOf<T>,
+        },
     }
 
     #[pallet::error]
@@ -1181,15 +1378,23 @@ pub mod pallet {
                 Error::<T>::TooEarly
             );
             ensure!(expiry.map_or(true, |e| now > e), Error::<T>::Imminent);
+            let deposit_payback_target = if who == provider {
+                DepositPaybackTarget::Provider(provider.clone())
+            } else {
+                DepositPaybackTarget::Beneficiary {
+                    from: provider.clone(),
+                    to: who.clone(),
+                }
+            };
 
-            let res =
-                T::Currency::repatriate_reserved(&provider, &who, deposit, BalanceStatus::Free);
-            debug_assert!(res.is_ok());
+            let lock_deposit = LockDepositFor::<T>::take(proposal_hash);
+            let deposit_state = deposit_payback_target.return_deposit::<T>(lock_deposit, deposit);
+
             <Preimages<T>>::remove(&proposal_hash);
             Self::deposit_event(Event::<T>::PreimageReaped {
                 proposal_hash,
                 provider,
-                deposit,
+                deposit_state,
                 reaper: who,
             });
             Ok(())
@@ -1284,9 +1489,10 @@ pub mod pallet {
             origin: OriginFor<T>,
             proposal_hash: T::Hash,
             index: ReferendumIndex,
+            lock_deposit: bool,
         ) -> DispatchResult {
             ensure_root(origin)?;
-            Self::do_enact_proposal(proposal_hash, index)
+            Self::do_enact_proposal(proposal_hash, index, lock_deposit)
         }
 
         /// Permanently place a proposal into the blacklist. This prevents it from ever being
@@ -1370,6 +1576,35 @@ pub mod pallet {
             Self::deposit_event(Event::<T>::ProposalCanceled { prop_index });
             Ok(())
         }
+
+        /// Unreserves locked deposits.
+        /// Can be called from any account with the block number lower or equal to the current.
+        #[pallet::weight(1_000_000_000)]
+        pub fn unreserve_locked_deposits(
+            origin: OriginFor<T>,
+            block_number: T::BlockNumber,
+        ) -> DispatchResultWithPostInfo {
+            ensure_signed(origin)?;
+
+            let base_weight = T::DbWeight::get().reads(1);
+            ensure!(
+                block_number <= frame_system::Pallet::<T>::block_number(),
+                DispatchErrorWithPostInfo {
+                    post_info: PostDispatchInfo {
+                        actual_weight: Some(base_weight),
+                        pays_fee: Pays::Yes
+                    },
+                    error: "Deposits for the given block number are still locked".into()
+                }
+            );
+            let payback_weight = Self::unreserve_locked_deposits_(block_number);
+
+            Ok(PostDispatchInfo {
+                actual_weight: Some(payback_weight + base_weight),
+                pays_fee: Pays::Yes,
+            }
+            .into())
+        }
     }
 }
 
@@ -1380,6 +1615,21 @@ impl<T: Config> Pallet<T> {
     /// index.
     pub fn backing_for(proposal: PropIndex) -> Option<BalanceOf<T>> {
         Self::deposit_of(proposal).map(|(l, d)| d.saturating_mul((l.len() as u32).into()))
+    }
+
+    pub fn unreserve_locked_deposits_(block_number: T::BlockNumber) -> Weight {
+        let mut weight = Weight::zero();
+
+        let unlocked_deposits = LockedDeposits::<T>::drain_prefix(block_number);
+        for (deposit_payback_target, deposit) in unlocked_deposits {
+            let recipient = deposit_payback_target.unreserve::<T>(deposit);
+
+            Self::deposit_event(Event::LockedDepositUnreserved { recipient, deposit });
+
+            weight += T::DbWeight::get().reads_writes(3, 3);
+        }
+
+        weight
     }
 
     /// Get all referenda ready for tally at block `n`.
@@ -1818,7 +2068,11 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    fn do_enact_proposal(proposal_hash: T::Hash, index: ReferendumIndex) -> DispatchResult {
+    fn do_enact_proposal(
+        proposal_hash: T::Hash,
+        index: ReferendumIndex,
+        lock_deposit: bool,
+    ) -> DispatchResult {
         let preimage = <Preimages<T>>::take(&proposal_hash);
         if let Some(PreimageStatus::Available {
             data,
@@ -1828,12 +2082,18 @@ impl<T: Config> Pallet<T> {
         }) = preimage
         {
             if let Ok(proposal) = T::Proposal::decode(&mut &data[..]) {
-                let err_amount = T::Currency::unreserve(&provider, deposit);
-                debug_assert!(err_amount.is_zero());
+                // Ignore in favor of explicit `lock_deposit`.
+                let _ = LockDepositFor::<T>::take(proposal_hash);
+
+                let deposit_payback_target = DepositPaybackTarget::Provider(provider.clone());
+
+                let deposit_state =
+                    deposit_payback_target.return_deposit::<T>(lock_deposit, deposit);
+
                 Self::deposit_event(Event::<T>::PreimageUsed {
                     proposal_hash,
                     provider,
-                    deposit,
+                    deposit_state,
                 });
 
                 let res = proposal
@@ -1847,6 +2107,8 @@ impl<T: Config> Pallet<T> {
 
                 Ok(())
             } else {
+                LockDepositFor::<T>::insert(proposal_hash, lock_deposit);
+
                 T::Slash::on_unbalanced(T::Currency::slash_reserved(&provider, deposit).0);
                 Self::deposit_event(Event::<T>::PreimageInvalid {
                     proposal_hash,
@@ -1869,12 +2131,14 @@ impl<T: Config> Pallet<T> {
         status: ReferendumStatus<T::BlockNumber, T::Hash, BalanceOf<T>>,
     ) -> bool {
         let total_issuance = T::Currency::total_issuance();
+        let lock_deposit = T::DepositLockStrategy::get().should_lock_deposit(&status);
         let approved = status.threshold.approved(status.tally, total_issuance);
 
         if approved {
             Self::deposit_event(Event::<T>::Passed { ref_index: index });
+
             if status.delay.is_zero() {
-                let _ = Self::do_enact_proposal(status.proposal_hash, index);
+                let _ = Self::do_enact_proposal(status.proposal_hash, index, lock_deposit);
             } else {
                 let when = now.saturating_add(status.delay);
                 // Note that we need the preimage now.
@@ -1897,6 +2161,7 @@ impl<T: Config> Pallet<T> {
                     Call::enact_proposal {
                         proposal_hash: status.proposal_hash,
                         index,
+                        lock_deposit,
                     }
                     .into(),
                 )
@@ -1931,6 +2196,10 @@ impl<T: Config> Pallet<T> {
         let next = Self::lowest_unbaked();
         let last = Self::referendum_count();
         let r = last.saturating_sub(next);
+
+        if T::DepositLockStrategy::get().should_unreserve_in_block(now) {
+            weight += Self::unreserve_locked_deposits_(now);
+        }
 
         // pick out another public referendum if it's time.
         if (now % T::LaunchPeriod::get()).is_zero() {
@@ -2063,6 +2332,7 @@ impl<T: Config> Pallet<T> {
             expiry: None,
         };
         <Preimages<T>>::insert(proposal_hash, a);
+        <LockDepositFor<T>>::insert(proposal_hash, true);
 
         Self::deposit_event(Event::<T>::PreimageNoted {
             proposal_hash,

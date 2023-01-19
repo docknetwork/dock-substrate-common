@@ -17,6 +17,8 @@
 
 //! The crate's tests.
 
+use core::cell::RefCell;
+
 use super::*;
 use crate as pallet_democracy;
 use codec::Encode;
@@ -153,6 +155,26 @@ parameter_types! {
     pub static PreimageByteDeposit: u64 = 0;
     pub static InstantAllowed: bool = false;
 }
+
+const DEPOSIT_CONFIG: DepositLockConfig<Test> = DepositLockConfig::new(2u32, 3, 10);
+
+thread_local! {
+    static DEPOSIT_LOCK_CONFIG: RefCell<DepositLockConfig<Test>> = RefCell::new(DEPOSIT_CONFIG);
+}
+pub struct DepositLockStrategy;
+
+impl Get<DepositLockConfig<Test>> for DepositLockStrategy {
+    fn get() -> DepositLockConfig<Test> {
+        DEPOSIT_LOCK_CONFIG.with(|cell| cell.borrow().clone())
+    }
+}
+
+impl DepositLockStrategy {
+    fn set(value: DepositLockConfig<Test>) {
+        DEPOSIT_LOCK_CONFIG.with(|cell| *cell.borrow_mut() = value);
+    }
+}
+
 ord_parameter_types! {
     pub const One: u64 = 1;
     pub const Two: u64 = 2;
@@ -175,6 +197,7 @@ impl Config for Test {
     type Event = Event;
     type Currency = pallet_balances::Pallet<Self>;
     type EnactmentPeriod = ConstU64<2>;
+    type DepositLockStrategy = DepositLockStrategy;
     type LaunchPeriod = ConstU64<2>;
     type VotingPeriod = ConstU64<2>;
     type VoteLockingPeriod = ConstU64<3>;

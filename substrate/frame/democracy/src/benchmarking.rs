@@ -79,6 +79,7 @@ fn add_referendum<T: Config>(n: u32) -> Result<ReferendumIndex, &'static str> {
         Call::enact_proposal {
             proposal_hash,
             index: referendum_index,
+            lock_deposit: false,
         }
         .into(),
     )
@@ -796,7 +797,7 @@ benchmarks! {
             Some(PreimageStatus::Available { .. }) => (),
             _ => return Err("preimage not available".into())
         }
-    }: enact_proposal(RawOrigin::Root, proposal_hash, 0)
+    }: enact_proposal(RawOrigin::Root, proposal_hash, 0, false)
     verify {
         // Fails due to mismatched origin
         assert_last_event::<T>(Event::<T>::Executed { ref_index: 0, result: Err(BadOrigin.into()) }.into());
@@ -818,7 +819,7 @@ benchmarks! {
             _ => return Err("preimage not available".into())
         }
         let origin = RawOrigin::Root.into();
-        let call = Call::<T>::enact_proposal { proposal_hash, index: 0 }.encode();
+        let call = Call::<T>::enact_proposal { proposal_hash, index: 0, lock_deposit: false }.encode();
     }: {
         assert_eq!(
             <Call<T> as Decode>::decode(&mut &*call)
