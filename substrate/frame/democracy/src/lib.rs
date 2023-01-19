@@ -714,7 +714,7 @@ pub mod pallet {
         PreimageReaped {
             proposal_hash: T::Hash,
             provider: T::AccountId,
-            deposit: BalanceOf<T>,
+            deposit_state: DepositWithState<BalanceOf<T>, T::BlockNumber>,
             reaper: T::AccountId,
         },
         /// A proposal_hash has been blacklisted permanently.
@@ -1344,7 +1344,7 @@ pub mod pallet {
                 }
             };
 
-            if LockDepositFor::<T>::take(proposal_hash) {
+            let state = if LockDepositFor::<T>::take(proposal_hash) {
                 let target_block = T::DepositLockStrategy::get().target_block_from_current();
 
                 LockedDeposits::<T>::mutate(
@@ -1357,15 +1357,19 @@ pub mod pallet {
                         deposit_opt.replace(deposit)
                     },
                 );
+
+                DepositState::Locked(target_block)
             } else {
                 payback_target.unreserve::<T>(deposit);
-            }
+
+                DepositState::Unreserved
+            };
 
             <Preimages<T>>::remove(&proposal_hash);
             Self::deposit_event(Event::<T>::PreimageReaped {
                 proposal_hash,
                 provider,
-                deposit,
+                deposit_state: DepositWithState { deposit, state },
                 reaper: who,
             });
             Ok(())
