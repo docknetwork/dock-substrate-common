@@ -154,7 +154,7 @@
 
 use core::num::NonZeroU32;
 
-use codec::{Decode, Encode, Input};
+use codec::{Decode, Encode, Input, MaxEncodedLen};
 use frame_support::{
     dispatch::{DispatchError, DispatchResultWithPostInfo, PostDispatchInfo},
     ensure,
@@ -259,10 +259,10 @@ pub struct DepositWithState<Balance, BlockNumber> {
     state: DepositState<BlockNumber>,
 }
 
-/// Denotes configuration to be used for locking image provider deposits.
+/// Denotes configuration to be used for locking preimage provider deposits.
 /// Lock will happen in case if proposal's turnout is less than `immediate_payback_turnout`.
 /// Target lock block number will be rounded to the closest higher value dividable
-/// by the `lock_unit` with zero reminder.
+/// by the `lock_unit` with zero remainder.
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo)]
 #[scale_info(skip_type_params(T))]
 pub struct DepositLockConfig<T: Config> {
@@ -297,21 +297,21 @@ impl<T: Config> DepositLockConfig<T> {
 
     /// Calculates target lock block using current block number provided by the system.
     /// Target block number will be rounded to the closest higher value dividable
-    /// by the `lock_unit` with zero reminder.
+    /// by the `lock_unit` with zero remainder.
     fn target_block_from_current(&self) -> T::BlockNumber {
         self.target_block_from(frame_system::Pallet::<T>::block_number())
     }
 
     /// Calculates target lock block using supplied block number.
     /// Target block number will be rounded to the closest higher value dividable
-    /// by the `lock_unit` with zero reminder.
-    fn target_block_from(&self, current: T::BlockNumber) -> T::BlockNumber {
+    /// by the `lock_unit` with zero remainder.
+    fn target_block_from(&self, number: T::BlockNumber) -> T::BlockNumber {
         let lock_deposit_for_at_least_blocks = self
             .lock_unit
             .get()
             .saturating_mul(self.lock_deposit_for_unit_amount.into())
             .into();
-        let maybe_odd_target = current
+        let maybe_odd_target = number
             .saturating_add(One::one())
             .saturating_add(lock_deposit_for_at_least_blocks);
         let rem = maybe_odd_target % self.lock_unit.get().into();
@@ -325,21 +325,21 @@ impl<T: Config> DepositLockConfig<T> {
     }
 
     /// Whether should locked deposits be paid in the given block or not.
-    fn should_pay_back_in_block(&self, current: T::BlockNumber) -> bool {
-        (current % self.lock_unit.get().into()).is_zero()
+    fn should_pay_back_in_block(&self, number: T::BlockNumber) -> bool {
+        (number % self.lock_unit.get().into()).is_zero()
     }
 
-    /// Determines if the deposit for the given proposal should be locked.
+    /// Determines if the deposit for the given referendum should be locked.
     fn should_lock_deposit(
         &self,
-        proposal: &ReferendumStatus<T::BlockNumber, T::Hash, BalanceOf<T>>,
+        ref_status: &ReferendumStatus<T::BlockNumber, T::Hash, BalanceOf<T>>,
     ) -> bool {
-        proposal.tally.turnout < self.immediate_payback_turnout
+        ref_status.tally.turnout < self.immediate_payback_turnout
     }
 }
 
 /// Denotes target account for the deposit payback.
-#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
 pub enum DepositPaybackTarget<AccountId> {
     /// Target is the preimage provider.
     Provider(AccountId),
@@ -347,7 +347,28 @@ pub enum DepositPaybackTarget<AccountId> {
     Beneficiary { from: AccountId, to: AccountId },
 }
 
-impl<AccountId> DepositPaybackTarget<AccountId> {
+impl<AccountId: Encode + Decode> DepositPaybackTarget<AccountId> {
+    /// Locks specified deposit amount based on the current block number returning lock target number.
+    fn lock_deposit<T: Config<AccountId = AccountId>>(
+        &self,
+        deposit: BalanceOf<T>,
+    ) -> T::BlockNumber
+    where
+        BalanceOf<T>: 'static,
+    {
+        let target_block = T::DepositLockStrategy::get().target_block_from_current();
+
+        LockedDeposits::<T>::mutate(
+            target_block,
+            self,
+            |deposit_opt: &mut Option<BalanceOf<T>>| {
+                deposit_opt.replace(deposit_opt.unwrap_or_default().saturating_add(deposit))
+            },
+        );
+
+        target_block
+    }
+
     /// Unreserves supplied amount returning target account.
     fn unreserve<T: Config<AccountId = AccountId>>(self, deposit: BalanceOf<T>) -> AccountId {
         match self {
@@ -365,6 +386,28 @@ impl<AccountId> DepositPaybackTarget<AccountId> {
                 to
             }
         }
+    }
+
+    /// Handles supplied deposit amount: either unreserves or locks it based on the `lock_deposit` flag.
+    fn handle_deposit<T: Config<AccountId = AccountId>>(
+        self,
+        lock_deposit: bool,
+        deposit: BalanceOf<T>,
+    ) -> DepositWithState<BalanceOf<T>, T::BlockNumber>
+    where
+        BalanceOf<T>: 'static,
+    {
+        let state = if lock_deposit {
+            let target_block = self.lock_deposit::<T>(deposit);
+
+            DepositState::Locked(target_block)
+        } else {
+            self.unreserve::<T>(deposit);
+
+            DepositState::Unreserved
+        };
+
+        DepositWithState { deposit, state }
     }
 }
 
@@ -1335,7 +1378,7 @@ pub mod pallet {
                 Error::<T>::TooEarly
             );
             ensure!(expiry.map_or(true, |e| now > e), Error::<T>::Imminent);
-            let payback_target = if who == provider {
+            let deposit_payback_target = if who == provider {
                 DepositPaybackTarget::Provider(provider.clone())
             } else {
                 DepositPaybackTarget::Beneficiary {
@@ -1344,32 +1387,14 @@ pub mod pallet {
                 }
             };
 
-            let state = if LockDepositFor::<T>::take(proposal_hash) {
-                let target_block = T::DepositLockStrategy::get().target_block_from_current();
-
-                LockedDeposits::<T>::mutate(
-                    target_block,
-                    &payback_target,
-                    |deposit_opt: &mut Option<BalanceOf<T>>| {
-                        let deposit =
-                            deposit_opt.map_or(deposit, |amount| amount.saturating_add(deposit));
-
-                        deposit_opt.replace(deposit)
-                    },
-                );
-
-                DepositState::Locked(target_block)
-            } else {
-                payback_target.unreserve::<T>(deposit);
-
-                DepositState::Unreserved
-            };
+            let lock_deposit = LockDepositFor::<T>::take(proposal_hash);
+            let deposit_state = deposit_payback_target.handle_deposit::<T>(lock_deposit, deposit);
 
             <Preimages<T>>::remove(&proposal_hash);
             Self::deposit_event(Event::<T>::PreimageReaped {
                 proposal_hash,
                 provider,
-                deposit_state: DepositWithState { deposit, state },
+                deposit_state,
                 reaper: who,
             });
             Ok(())
@@ -2062,31 +2087,13 @@ impl<T: Config> Pallet<T> {
 
                 let deposit_payback_target = DepositPaybackTarget::Provider(provider.clone());
 
-                let state = if !lock_deposit {
-                    deposit_payback_target.unreserve::<T>(deposit);
-
-                    DepositState::Unreserved
-                } else {
-                    let target_block = T::DepositLockStrategy::get().target_block_from_current();
-
-                    LockedDeposits::<T>::mutate(
-                        target_block,
-                        &deposit_payback_target,
-                        |deposit_opt: &mut Option<BalanceOf<T>>| {
-                            let deposit = deposit_opt
-                                .map_or(deposit, |amount| amount.saturating_add(deposit));
-
-                            deposit_opt.replace(deposit)
-                        },
-                    );
-
-                    DepositState::Locked(target_block)
-                };
+                let deposit_state =
+                    deposit_payback_target.handle_deposit::<T>(lock_deposit, deposit);
 
                 Self::deposit_event(Event::<T>::PreimageUsed {
                     proposal_hash,
                     provider,
-                    deposit_state: DepositWithState { deposit, state },
+                    deposit_state,
                 });
 
                 let res = proposal
