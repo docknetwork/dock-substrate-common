@@ -537,9 +537,9 @@ fn deposit_lock_config() {
             1720
         );
 
-        assert!(DepositLockConfig::<Test>::new(40, 40, 0).should_pay_back_in_block(0));
-        assert!(DepositLockConfig::<Test>::new(40, 40, 0).should_pay_back_in_block(40));
-        assert!(!DepositLockConfig::<Test>::new(40, 40, 0).should_pay_back_in_block(1));
+        assert!(DepositLockConfig::<Test>::new(40, 40, 0).should_unreserve_in_block(0));
+        assert!(DepositLockConfig::<Test>::new(40, 40, 0).should_unreserve_in_block(40));
+        assert!(!DepositLockConfig::<Test>::new(40, 40, 0).should_unreserve_in_block(1));
         assert!(
             DepositLockConfig::<Test>::new(40, 40, 10).should_lock_deposit(&ReferendumStatus {
                 end: 4,

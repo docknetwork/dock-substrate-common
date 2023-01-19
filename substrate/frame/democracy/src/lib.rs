@@ -324,8 +324,8 @@ impl<T: Config> DepositLockConfig<T> {
         }
     }
 
-    /// Whether should locked deposits be paid in the given block or not.
-    fn should_pay_back_in_block(&self, number: T::BlockNumber) -> bool {
+    /// Whether should locked deposits be unreserved in the given block or not.
+    fn should_unreserve_in_block(&self, number: T::BlockNumber) -> bool {
         (number % self.lock_unit.get().into()).is_zero()
     }
 
@@ -389,15 +389,15 @@ impl<AccountId: Encode + Decode> DepositPaybackTarget<AccountId> {
     }
 
     /// Handles supplied deposit amount: either unreserves or locks it based on the `lock_deposit` flag.
-    fn handle_deposit<T: Config<AccountId = AccountId>>(
+    fn return_deposit<T: Config<AccountId = AccountId>>(
         self,
-        lock_deposit: bool,
+        lock: bool,
         deposit: BalanceOf<T>,
     ) -> DepositWithState<BalanceOf<T>, T::BlockNumber>
     where
         BalanceOf<T>: 'static,
     {
-        let state = if lock_deposit {
+        let state = if lock {
             let target_block = self.lock_deposit::<T>(deposit);
 
             DepositState::Locked(target_block)
@@ -1388,7 +1388,7 @@ pub mod pallet {
             };
 
             let lock_deposit = LockDepositFor::<T>::take(proposal_hash);
-            let deposit_state = deposit_payback_target.handle_deposit::<T>(lock_deposit, deposit);
+            let deposit_state = deposit_payback_target.return_deposit::<T>(lock_deposit, deposit);
 
             <Preimages<T>>::remove(&proposal_hash);
             Self::deposit_event(Event::<T>::PreimageReaped {
@@ -2088,7 +2088,7 @@ impl<T: Config> Pallet<T> {
                 let deposit_payback_target = DepositPaybackTarget::Provider(provider.clone());
 
                 let deposit_state =
-                    deposit_payback_target.handle_deposit::<T>(lock_deposit, deposit);
+                    deposit_payback_target.return_deposit::<T>(lock_deposit, deposit);
 
                 Self::deposit_event(Event::<T>::PreimageUsed {
                     proposal_hash,
@@ -2197,7 +2197,7 @@ impl<T: Config> Pallet<T> {
         let last = Self::referendum_count();
         let r = last.saturating_sub(next);
 
-        if T::DepositLockStrategy::get().should_pay_back_in_block(now) {
+        if T::DepositLockStrategy::get().should_unreserve_in_block(now) {
             weight += Self::unreserve_locked_deposits_(now);
         }
 
