@@ -86,9 +86,12 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
+        /// The caller isn't an operator for this currency pair.
         NotAnOperator,
+        /// Given operator is already added for this currency pair.
         OperatorIsAlreadyAdded,
-        OperatorDoesntExist,
+        /// Provided operator doesn't exist for this currency pair.
+        OperatorDoesNotExist,
     }
 
     /// Stores operators for the currency pairs.
@@ -201,7 +204,7 @@ mod pallet {
 
                     Ok(())
                 } else {
-                    Err(Error::<T>::OperatorDoesntExist)
+                    Err(Error::<T>::OperatorDoesNotExist)
                 }
             })?;
             Self::deposit_event(Event::<T>::OperatorRemoved(stored_pair, operator));
