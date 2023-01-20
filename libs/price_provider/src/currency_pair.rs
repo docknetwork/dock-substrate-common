@@ -68,7 +68,8 @@ impl<S: EncodableAsString> CurrencySymbolPair<S, S> {
 /// Represents from/to currency pair built atop of two types returning `&'static str`.
 /// Used to express price relationship between two currencies.
 /// Given some from/to pair price `N` should be considered as `1 x from = N x to`.
-#[derive(TypeInfo, Clone, PartialEq, Eq, Debug)]
+#[derive(Debug, TypeInfo)]
+#[scale_info(skip_type_params(From, To))]
 pub struct StaticCurrencySymbolPair<From: Get<&'static str>, To: Get<&'static str>> {
     _marker: PhantomData<(From, To)>,
 }
