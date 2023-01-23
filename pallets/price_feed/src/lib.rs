@@ -99,7 +99,7 @@ mod pallet {
     #[pallet::getter(fn operators)]
     pub type Operators<T: Config> = StorageDoubleMap<
         _,
-        Twox64Concat,
+        Blake2_128Concat,
         BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         Twox64Concat,
         <T as frame_system::Config>::AccountId,
@@ -113,7 +113,7 @@ mod pallet {
     #[pallet::getter(fn price)]
     pub type Prices<T: Config> = StorageMap<
         _,
-        Twox64Concat,
+        Blake2_128Concat,
         BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         PriceRecord<T::BlockNumber>,
         OptionQuery,
