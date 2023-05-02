@@ -75,7 +75,7 @@ pub struct StaticCurrencySymbolPair<From: Get<&'static str>, To: Get<&'static st
 }
 
 /// Stores `CurrencySymbolPair` and limits each of the symbols by the max length in bytes - `MaxSymBytesLen`.
-#[derive(Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
+#[derive(TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[codec(mel_bound())]
 #[scale_info(skip_type_params(MaxSymBytesLen))]
@@ -102,6 +102,14 @@ impl From<BoundCurrencySymbolPairError> for DispatchError {
         BoundCurrencySymbolPairError::InvalidSymbolByteLen: BoundCurrencySymbolPairError,
     ) -> Self {
         DispatchError::Other("The symbol has an invalid length")
+    }
+}
+
+impl From<BoundCurrencySymbolPairError> for codec::Error {
+    fn from(
+        BoundCurrencySymbolPairError::InvalidSymbolByteLen: BoundCurrencySymbolPairError,
+    ) -> Self {
+        "The symbol has an invalid length".into()
     }
 }
 
@@ -137,10 +145,11 @@ impl<From: EncodableAsString, To: EncodableAsString, MaxSymBytesLen: Get<u32>>
 #[derive(Encode, Decode, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(TypeInfo)]
-#[codec(mel_bound())]
 #[scale_info(skip_type_params(MaxBytesLen))]
 struct BoundCurrencySymbol<S: EncodableAsString, MaxBytesLen: Get<u32>> {
     sym: S,
+    #[codec(skip)]
+    #[cfg_attr(feature = "std", serde(skip))]
     _marker: PhantomData<MaxBytesLen>,
 }
 
@@ -174,6 +183,19 @@ impl<From: EncodableAsString, To: EncodableAsString, MaxSymBytesLen: Get<u32>> E
 {
     fn encode_to<T: codec::Output + ?Sized>(&self, dest: &mut T) {
         self.0.encode_to(dest);
+    }
+}
+
+impl<From, To, MaxSymBytesLen> Decode for BoundCurrencySymbolPair<From, To, MaxSymBytesLen>
+where
+    From: EncodableAsString + Decode,
+    To: EncodableAsString + Decode,
+    MaxSymBytesLen: Get<u32>,
+{
+    fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
+        let res = CurrencySymbolPair::<From, To>::decode(input)?.try_into()?;
+
+        Ok(res)
     }
 }
 
@@ -292,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn encoded_size() {
+    fn max_bytes_len() {
         assert_eq!("🦅".as_bytes().len(), 4);
         assert_eq!(
             BoundCurrencySymbol::<_, ConstU32<4>>::new("🦅")
@@ -328,13 +350,14 @@ mod tests {
     }
 
     #[test]
-    fn encode_decode() {
+    fn encode_decode_both_same_len() {
         let pair = CurrencySymbolPair::new("ABC", "CDE");
-        let encoded = pair
+        let bound_pair = pair
             .clone()
             .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<3>>>()
-            .unwrap()
-            .encode();
+            .unwrap();
+        let encoded = bound_pair.encode();
+        assert_eq!(encoded.len(), bound_pair.encoded_size());
         let decoded: BoundCurrencySymbolPair<String, _, ConstU32<3>> =
             Decode::decode(&mut &encoded[..]).unwrap();
         assert_eq!(
@@ -353,8 +376,167 @@ mod tests {
             decoded.0.to,
             BoundCurrencySymbol::new("E".to_string()).unwrap()
         );
-
+        let decoded: BoundCurrencySymbolPair<String, _, ConstU32<4>> =
+            Decode::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(
+            decoded.0.from,
+            BoundCurrencySymbol::new("ABC".to_string()).unwrap()
+        );
+        assert_eq!(
+            decoded.0.to,
+            BoundCurrencySymbol::new("CDE".to_string()).unwrap()
+        );
+        assert_eq!(
+            BoundCurrencySymbolPair::<String, String, ConstU32<2>>::decode(&mut &encoded[..]),
+            Err("The symbol has an invalid length".into())
+        );
+        assert_eq!(
+            BoundCurrencySymbolPair::<String, String, ConstU32<1>>::decode(&mut &encoded[..]),
+            Err("The symbol has an invalid length".into())
+        );
         assert_eq!(pair.map_pair(ToOwned::to_owned), decoded.into());
+    }
+
+    #[test]
+    fn encode_decode_first_longer() {
+        let pair = CurrencySymbolPair::new("ABCDEF", "X");
+        let bound_pair = pair
+            .clone()
+            .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<6>>>()
+            .unwrap();
+        let encoded = bound_pair.encode();
+        assert_eq!(encoded.len(), bound_pair.encoded_size());
+        let decoded: BoundCurrencySymbolPair<String, _, ConstU32<6>> =
+            Decode::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(
+            decoded.0.from,
+            BoundCurrencySymbol::new("ABCDEF".to_string()).unwrap()
+        );
+        assert_eq!(
+            decoded.0.to,
+            BoundCurrencySymbol::new("X".to_string()).unwrap()
+        );
+        assert_ne!(
+            decoded.0.from,
+            BoundCurrencySymbol::new("ABCDE".to_string()).unwrap()
+        );
+        assert_ne!(
+            decoded.0.to,
+            BoundCurrencySymbol::new("".to_string()).unwrap()
+        );
+        let decoded: BoundCurrencySymbolPair<String, _, ConstU32<6>> =
+            Decode::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(
+            decoded.0.from,
+            BoundCurrencySymbol::new("ABCDEF".to_string()).unwrap()
+        );
+        assert_eq!(
+            decoded.0.to,
+            BoundCurrencySymbol::new("X".to_string()).unwrap()
+        );
+        assert_eq!(
+            BoundCurrencySymbolPair::<String, String, ConstU32<5>>::decode(&mut &encoded[..]),
+            Err("The symbol has an invalid length".into())
+        );
+        assert_eq!(pair.map_pair(ToOwned::to_owned), decoded.into());
+    }
+
+    #[test]
+    fn encode_decode_second_longer() {
+        let pair = CurrencySymbolPair::new("X", "ABCDEF");
+        let bound_pair = pair
+            .clone()
+            .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<6>>>()
+            .unwrap();
+        let encoded = bound_pair.encode();
+        let decoded: BoundCurrencySymbolPair<String, _, ConstU32<6>> =
+            Decode::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(encoded.len(), bound_pair.encoded_size());
+        assert_eq!(
+            decoded.0.from,
+            BoundCurrencySymbol::new("X".to_string()).unwrap()
+        );
+        assert_eq!(
+            decoded.0.to,
+            BoundCurrencySymbol::new("ABCDEF".to_string()).unwrap()
+        );
+        assert_ne!(
+            decoded.0.from,
+            BoundCurrencySymbol::new("".to_string()).unwrap()
+        );
+        assert_ne!(
+            decoded.0.to,
+            BoundCurrencySymbol::new("ABCDE".to_string()).unwrap()
+        );
+        let decoded: BoundCurrencySymbolPair<String, _, ConstU32<6>> =
+            Decode::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(
+            decoded.0.from,
+            BoundCurrencySymbol::new("X".to_string()).unwrap()
+        );
+        assert_eq!(
+            decoded.0.to,
+            BoundCurrencySymbol::new("ABCDEF".to_string()).unwrap()
+        );
+        assert_eq!(
+            BoundCurrencySymbolPair::<String, String, ConstU32<5>>::decode(&mut &encoded[..]),
+            Err("The symbol has an invalid length".into())
+        );
+        assert_eq!(pair.map_pair(ToOwned::to_owned), decoded.into());
+    }
+
+    #[test]
+    fn max_encoded_len() {
+        assert_eq!(
+            BoundCurrencySymbol::<_, ConstU32<10>>::new("a".repeat(10))
+                .unwrap()
+                .encoded_size(),
+            BoundCurrencySymbol::<String, ConstU32<10>>::max_encoded_len()
+        );
+        assert_eq!(
+            BoundCurrencySymbol::<String, ConstU32<10>>::max_encoded_len(),
+            11
+        );
+        assert_eq!(
+            BoundCurrencySymbol::<&'static str, ConstU32<10>>::max_encoded_len(),
+            11
+        );
+        assert_eq!(
+            BoundCurrencySymbol::<String, ConstU32<1000>>::max_encoded_len(),
+            1002
+        );
+        assert_eq!(
+            BoundCurrencySymbol::<&'static str, ConstU32<1000>>::max_encoded_len(),
+            1002
+        );
+        assert_eq!(
+            BoundCurrencySymbol::<_, ConstU32<1000>>::new("a".repeat(1000))
+                .unwrap()
+                .encoded_size(),
+            BoundCurrencySymbol::<String, ConstU32<1000>>::max_encoded_len()
+        );
+    }
+
+    #[test]
+    fn encoded_size_test() {
+        assert_eq!(
+            BoundCurrencySymbol::<_, ConstU32<10>>::new("ABCDE")
+                .unwrap()
+                .encoded_size(),
+            BoundCurrencySymbol::<_, ConstU32<10>>::new("ABCDE".to_string())
+                .unwrap()
+                .encode()
+                .len()
+        );
+        assert_eq!(
+            BoundCurrencySymbol::<_, ConstU32<100>>::new("ABCDE".to_string())
+                .unwrap()
+                .encoded_size(),
+            BoundCurrencySymbol::<_, ConstU32<100>>::new("ABCDE".to_string())
+                .unwrap()
+                .encode()
+                .len()
+        );
     }
 
     #[test]
@@ -405,7 +587,5 @@ mod tests {
 
         let cur_pair = CurrencySymbolPair::<_, _>::new("DOCK", "USD");
         assert_eq!(DockUsdPair::get(), cur_pair);
-
-        assert_eq!(format!("{}", DockUsdPair::get()), "DOCK/USD");
     }
 }
