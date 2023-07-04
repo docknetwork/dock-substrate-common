@@ -8,5 +8,6 @@ members = [
     "pallets/price_feed/rpc",
     "substrate/frame/elections-phragmen",
     "substrate/frame/collective",
-    "substrate/frame/democracy"
+    "substrate/frame/democracy",
+    "substrate/frame/staking"
 ]
