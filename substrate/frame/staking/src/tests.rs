@@ -17,7 +17,7 @@
 
 //! Tests for the module.
 
-use crate::migrations::unclaimed_stash_eras_counter::MigrateToUnclaimedStashEras;
+use crate::migrations::unclaimed_stash_eras::MigrateToUnclaimedStashEras;
 
 use super::{ConfigOp, Event, MaxUnlockingChunks, *};
 use frame_election_provider_support::{ElectionProvider, SortedListProvider, Support};

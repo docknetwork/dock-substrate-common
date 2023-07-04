@@ -20,7 +20,7 @@ use super::*;
 use frame_election_provider_support::SortedListProvider;
 use frame_support::traits::OnRuntimeUpgrade;
 
-pub mod unclaimed_stash_eras_counter {
+pub mod unclaimed_stash_eras {
     use super::*;
 
     pub struct MigrateToUnclaimedStashEras<T>(sp_std::marker::PhantomData<T>);
