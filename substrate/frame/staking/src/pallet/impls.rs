@@ -669,14 +669,15 @@ impl<T: Config> Pallet<T> {
     pub fn reward_by_ids(validators_points: impl IntoIterator<Item = (T::AccountId, u32)>) {
         if let Some(active_era) = Self::active_era() {
             <ErasRewardPoints<T>>::mutate(active_era.index, |era_rewards| {
-                for (validator, points) in validators_points {
+                for (validator, points) in validators_points
+                    .into_iter()
+                    .filter(|(_, points)| !points.is_zero())
+                {
                     let validator_points = era_rewards
                         .individual
                         .entry(validator.clone())
                         .or_insert_with(|| {
-                            if !points.is_zero() {
-                                <UnclaimedStashEras<T>>::insert(validator, active_era.index, ());
-                            }
+                            <UnclaimedStashEras<T>>::insert(validator, active_era.index, ());
 
                             Default::default()
                         });
