@@ -268,6 +268,7 @@ fn unable_to_kill_stash_while_it_has_some_rewards() {
         assert_eq!(Staking::bonded(&11), Some(10));
         // Adds 2 slashing spans
         add_slash(&11);
+
         // Unable to kill a stash with unpaid rewards
         assert_noop!(
             Staking::kill_stash(&11, 2),
@@ -296,7 +297,7 @@ fn unable_to_kill_stash_while_it_has_some_rewards() {
 
         // trigger next era.
         mock::start_active_era(4);
-        // Attempting to free the balances now will fail. 2 eras need to pass.
+        // Attempting to free the balances now will fail. Era rewards must be claimed.
         assert_noop!(
             Staking::withdraw_unbonded(Origin::signed(10), 0),
             Error::<Test>::CantKillStashWithUnclaimedRewards
@@ -305,7 +306,7 @@ fn unable_to_kill_stash_while_it_has_some_rewards() {
         make_all_reward_payment(0);
 
         assert_ok!(Staking::withdraw_unbonded(Origin::signed(10), 0));
-        // Now the value is free and the staking ledger is updated.
+        // Now the old value is free and the staking ledger is updated. The new value is the era payout.
         assert_eq!(
             Staking::ledger(&10),
             Some(StakingLedger {

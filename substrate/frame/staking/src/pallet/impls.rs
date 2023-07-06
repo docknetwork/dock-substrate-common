@@ -103,7 +103,7 @@ impl<T: Config> Pallet<T> {
             Error::<T>::InvalidEraToReward
                 .with_weight(T::WeightInfo::payout_stakers_alive_staked(0))
         })?;
-        let history_depth: u32 = Self::history_depth();
+        let history_depth = Self::history_depth();
         ensure!(
             era <= current_era && era >= current_era.saturating_sub(history_depth),
             Error::<T>::InvalidEraToReward
