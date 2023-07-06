@@ -76,7 +76,6 @@ pub fn create_validator_with_nominators<T: Config>(
 ) -> Result<(T::AccountId, Vec<(T::AccountId, T::AccountId)>), &'static str> {
     // Clean up any existing state.
     clear_validators_and_nominators::<T>();
-    let mut points_total = 0;
     let mut points_individual = Vec::new();
 
     let (v_stash, v_controller) = create_stash_controller::<T>(0, 100, destination.clone())?;
@@ -87,7 +86,6 @@ pub fn create_validator_with_nominators<T: Config>(
     Staking::<T>::validate(RawOrigin::Signed(v_controller).into(), validator_prefs)?;
     let stash_lookup = T::Lookup::unlookup(v_stash.clone());
 
-    points_total += 10;
     points_individual.push((v_stash.clone(), 10));
 
     let mut nominators = Vec::new();
@@ -121,14 +119,11 @@ pub fn create_validator_with_nominators<T: Config>(
     assert_ne!(Validators::<T>::count(), 0);
     assert_ne!(Nominators::<T>::count(), 0);
 
-    // Give Era Points
-    let reward = EraRewardPoints::<T::AccountId> {
-        total: points_total,
-        individual: points_individual.into_iter().collect(),
-    };
-
     let current_era = CurrentEra::<T>::get().unwrap();
-    ErasRewardPoints::<T>::insert(current_era, reward);
+    Staking::<T>::start_session(SessionIndex::one());
+
+    // Give Era Points
+    Staking::<T>::reward_by_ids(points_individual);
 
     // Create reward pool
     let total_payout = T::Currency::minimum_balance()
@@ -758,23 +753,16 @@ benchmarks! {
         assert!(new_validators.len() == v as usize);
 
         let current_era = CurrentEra::<T>::get().unwrap();
-        let mut points_total = 0;
         let mut points_individual = Vec::new();
         let mut payout_calls_arg = Vec::new();
 
         for validator in new_validators.iter() {
-            points_total += 10;
             points_individual.push((validator.clone(), 10));
             payout_calls_arg.push((validator.clone(), current_era));
         }
 
         // Give Era Points
-        let reward = EraRewardPoints::<T::AccountId> {
-            total: points_total,
-            individual: points_individual.into_iter().collect(),
-        };
-
-        ErasRewardPoints::<T>::insert(current_era, reward);
+        Staking::<T>::reward_by_ids(points_individual);
 
         // Create reward pool
         let total_payout = T::Currency::minimum_balance() * 1000u32.into();
@@ -1035,6 +1023,9 @@ mod tests {
                 RewardDestination::Staked,
             )
             .unwrap();
+
+            let current_era = CurrentEra::<Test>::get().unwrap();
+            crate::mock::make_all_reward_payment(current_era);
 
             // Add 20 slashing spans
             let num_of_slashing_spans = 20;

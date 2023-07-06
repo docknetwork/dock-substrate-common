@@ -120,7 +120,8 @@ impl<T: Config> Pallet<T> {
         let controller = Self::bonded(&validator_stash).ok_or_else(|| {
             Error::<T>::NotStash.with_weight(T::WeightInfo::payout_stakers_alive_staked(0))
         })?;
-        let mut ledger = <Ledger<T>>::get(&controller).ok_or(Error::<T>::NotController)?;
+        let mut ledger: StakingLedger<T> =
+            <Ledger<T>>::get(&controller).ok_or(Error::<T>::NotController)?;
 
         ledger
             .claimed_rewards
@@ -178,6 +179,7 @@ impl<T: Config> Pallet<T> {
         let validator_staking_payout = validator_exposure_part * validator_leftover_payout;
 
         Self::deposit_event(Event::<T>::PayoutStarted(era, ledger.stash.clone()));
+        <UnclaimedStashEras<T>>::remove(&ledger.stash, era);
 
         let mut total_imbalance = PositiveImbalanceOf::<T>::zero();
         // We can now make total validator payout:
@@ -308,7 +310,7 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Start a session potentially starting an era.
-    fn start_session(start_session: SessionIndex) {
+    pub(crate) fn start_session(start_session: SessionIndex) {
         let next_active_era = Self::active_era().map(|e| e.index + 1).unwrap_or(0);
         // This is only `Some` when current era has already progressed to the next era, while the
         // active era is one behind (i.e. in the *last session of the active era*, or *first session
@@ -591,12 +593,17 @@ impl<T: Config> Pallet<T> {
     /// Remove all associated data of a stash account from the staking system.
     ///
     /// Assumes storage is upgraded before calling.
+    /// This method will succeed only if all rewards of this stash were claimed.
     ///
     /// This is called:
     /// - after a `withdraw_unbonded()` call that frees all of a stash's bonded balance.
     /// - through `reap_stash()` if the balance has fallen to zero (through slashing).
     pub(crate) fn kill_stash(stash: &T::AccountId, num_slashing_spans: u32) -> DispatchResult {
         let controller = <Bonded<T>>::get(stash).ok_or(Error::<T>::NotStash)?;
+        ensure!(
+            <UnclaimedStashEras<T>>::iter_prefix(stash).next().is_none(),
+            Error::<T>::CantKillStashWithUnclaimedRewards
+        );
 
         slashing::clear_stash_metadata::<T>(stash, num_slashing_spans)?;
 
@@ -621,7 +628,14 @@ impl<T: Config> Pallet<T> {
         #[allow(deprecated)]
         <ErasValidatorPrefs<T>>::remove_prefix(era_index, None);
         <ErasValidatorReward<T>>::remove(era_index);
-        <ErasRewardPoints<T>>::remove(era_index);
+        let era_reward_points = <ErasRewardPoints<T>>::take(era_index);
+        for (account, _) in era_reward_points
+            .individual
+            .into_iter()
+            .filter(|(_, points)| !points.is_zero())
+        {
+            <UnclaimedStashEras<T>>::remove(account, era_index);
+        }
         <ErasTotalStake<T>>::remove(era_index);
         ErasStartSessionIndex::<T>::remove(era_index);
     }
@@ -655,8 +669,19 @@ impl<T: Config> Pallet<T> {
     pub fn reward_by_ids(validators_points: impl IntoIterator<Item = (T::AccountId, u32)>) {
         if let Some(active_era) = Self::active_era() {
             <ErasRewardPoints<T>>::mutate(active_era.index, |era_rewards| {
-                for (validator, points) in validators_points.into_iter() {
-                    *era_rewards.individual.entry(validator).or_default() += points;
+                for (validator, points) in validators_points
+                    .into_iter()
+                    .filter(|(_, points)| !points.is_zero())
+                {
+                    let validator_points = era_rewards
+                        .individual
+                        .entry(validator.clone())
+                        .or_insert_with(|| {
+                            <UnclaimedStashEras<T>>::insert(validator, active_era.index, ());
+
+                            Default::default()
+                        });
+                    *validator_points += points;
                     era_rewards.total += points;
                 }
             });

@@ -45,6 +45,8 @@ pub fn clear_validators_and_nominators<T: Config>() {
 
     // NOTE: safe to call outside block production
     T::VoterList::unsafe_clear();
+
+    let _ = UnclaimedStashEras::<T>::clear(u32::MAX, None);
 }
 
 /// Grab a funded user.

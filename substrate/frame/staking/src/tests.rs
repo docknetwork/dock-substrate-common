@@ -17,13 +17,15 @@
 
 //! Tests for the module.
 
+use crate::migrations::unclaimed_stash_eras::MigrateToUnclaimedStashEras;
+
 use super::{ConfigOp, Event, MaxUnlockingChunks, *};
 use frame_election_provider_support::{ElectionProvider, SortedListProvider, Support};
 use frame_support::{
     assert_noop, assert_ok, assert_storage_noop, bounded_vec,
     dispatch::WithPostDispatchInfo,
     pallet_prelude::*,
-    traits::{Currency, Get, ReservableCurrency},
+    traits::{Currency, Get, OnRuntimeUpgrade, ReservableCurrency},
     weights::{extract_actual_weight, GetDispatchInfo},
 };
 use mock::*;
@@ -90,6 +92,254 @@ fn set_staking_configs_works() {
         assert_eq!(MaxValidatorsCount::<Test>::get(), None);
         assert_eq!(ChillThreshold::<Test>::get(), None);
         assert_eq!(MinCommission::<Test>::get(), Perbill::from_percent(0));
+    });
+}
+
+#[test]
+fn unclaimed_rewards_counter_migration() {
+    ExtBuilder::default().build_and_execute(|| {
+        ErasRewardPoints::<Test>::insert(
+            1,
+            EraRewardPoints {
+                total: 150,
+                individual: vec![(11, 100), (21, 50), (3, 0)].into_iter().collect(),
+            },
+        );
+        ErasRewardPoints::<Test>::insert(
+            2,
+            EraRewardPoints {
+                total: 150,
+                individual: vec![(11, 100), (3, 50), (13, 0)].into_iter().collect(),
+            },
+        );
+        ErasRewardPoints::<Test>::insert(
+            3,
+            EraRewardPoints {
+                total: 150,
+                individual: vec![(5, 100), (6, 50), (4, 0)].into_iter().collect(),
+            },
+        );
+
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix_values(&3).count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix_values(&4).count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix_values(&5).count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix_values(&6).count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix_values(&11).count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix_values(&13).count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix_values(&21).count(),
+            0
+        );
+
+        MigrateToUnclaimedStashEras::<Test>::on_runtime_upgrade();
+
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&3)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
+        assert_eq!(UnclaimedStashEras::<Test>::iter_prefix(&4).count(), 0);
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&5)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&6)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&11)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(UnclaimedStashEras::<Test>::iter_prefix(&13).count(), 0);
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&21)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+    });
+}
+
+#[test]
+fn unclaimed_rewards_counter_will_be_zeroed_on_era_removal() {
+    ExtBuilder::default().build_and_execute(|| {
+        mock::start_active_era(5);
+        Pallet::<Test>::reward_by_ids(vec![(11, 1), (12, 1)]);
+
+        mock::start_active_era(10);
+        Pallet::<Test>::reward_by_ids(vec![(11, 2), (13, 2)]);
+
+        mock::start_active_era(20);
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&11)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![5, 10]
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&12)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![5]
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&13)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![10]
+        );
+
+        Staking::set_history_depth(Origin::root(), 10, 0).unwrap();
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&11)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![10]
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&12)
+                .map(|(k, ())| k)
+                .count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&13)
+                .map(|(k, ())| k)
+                .collect::<Vec<_>>(),
+            vec![10]
+        );
+        Staking::set_history_depth(Origin::root(), 9, 0).unwrap();
+
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&11)
+                .map(|(k, ())| k)
+                .count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&12)
+                .map(|(k, ())| k)
+                .count(),
+            0
+        );
+        assert_eq!(
+            UnclaimedStashEras::<Test>::iter_prefix(&13)
+                .map(|(k, ())| k)
+                .count(),
+            0
+        );
+    });
+}
+
+#[test]
+fn unable_to_kill_stash_while_it_has_some_rewards() {
+    ExtBuilder::default().build_and_execute(|| {
+        let payout = 9844;
+        Pallet::<Test>::reward_by_ids(vec![(11, 1)]);
+
+        mock::start_active_era(1);
+        // Account 11 is stashed and locked, and account 10 is the controller
+        assert_eq!(Staking::bonded(&11), Some(10));
+        // Adds 2 slashing spans
+        add_slash(&11);
+
+        // Unable to kill a stash with unpaid rewards
+        assert_noop!(
+            Staking::kill_stash(&11, 2),
+            Error::<Test>::CantKillStashWithUnclaimedRewards
+        );
+        assert_noop!(
+            Staking::force_unstake(Origin::root(), 11, 2),
+            Error::<Test>::CantKillStashWithUnclaimedRewards
+        );
+
+        // Unbond almost all of the funds in stash.
+        assert_ok!(Staking::unbond(Origin::signed(10), 900));
+        assert_eq!(
+            Staking::ledger(&10),
+            Some(StakingLedger {
+                stash: 11,
+                total: 900,
+                active: 0,
+                unlocking: bounded_vec![UnlockChunk {
+                    value: 900,
+                    era: 1 + 3
+                }],
+                claimed_rewards: vec![]
+            }),
+        );
+
+        // trigger next era.
+        mock::start_active_era(4);
+        // Attempting to free the balances now will fail. Era rewards must be claimed.
+        assert_noop!(
+            Staking::withdraw_unbonded(Origin::signed(10), 0),
+            Error::<Test>::CantKillStashWithUnclaimedRewards
+        );
+
+        make_all_reward_payment(0);
+
+        assert_ok!(Staking::withdraw_unbonded(Origin::signed(10), 0));
+        // Now the old value is free and the staking ledger is updated. The new value is the era payout.
+        assert_eq!(
+            Staking::ledger(&10),
+            Some(StakingLedger {
+                stash: 11,
+                total: payout,
+                active: payout,
+                unlocking: Default::default(),
+                claimed_rewards: vec![0]
+            }),
+        );
+
+        // Unbond almost all of the funds in stash.
+        assert_ok!(Staking::unbond(Origin::signed(10), payout));
+        assert_ok!(Staking::withdraw_unbonded(Origin::signed(10), 0));
+
+        assert_eq!(
+            Staking::ledger(&10),
+            Some(StakingLedger {
+                stash: 11,
+                total: payout,
+                active: 0,
+                unlocking: bounded_vec![UnlockChunk {
+                    value: payout,
+                    era: 4 + 3
+                }],
+                claimed_rewards: vec![0]
+            }),
+        );
+
+        mock::start_active_era(7);
+        assert_ok!(Staking::withdraw_unbonded(Origin::signed(10), 2));
+
+        assert_eq!(Staking::ledger(&10), None,);
     });
 }
 
@@ -2382,13 +2632,16 @@ fn reward_validator_slashing_validator_does_not_overflow() {
             own: stake,
             others: vec![],
         };
-        let reward = EraRewardPoints::<AccountId> {
-            total: 1,
-            individual: vec![(11, 1)].into_iter().collect(),
-        };
+        Pallet::<Test>::reward_by_ids(vec![(11, 1)]);
 
         // Check reward
-        ErasRewardPoints::<Test>::insert(0, reward);
+        assert_eq!(
+            EraRewardPoints::<AccountId> {
+                total: 1,
+                individual: vec![(11, 1)].into_iter().collect(),
+            },
+            ErasRewardPoints::<Test>::get(0)
+        );
         ErasStakers::<Test>::insert(0, 11, &exposure);
         ErasStakersClipped::<Test>::insert(0, 11, exposure);
         ErasValidatorReward::<Test>::insert(0, stake);

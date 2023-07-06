@@ -401,6 +401,12 @@ pub mod pallet {
     pub type ErasRewardPoints<T: Config> =
         StorageMap<_, Twox64Concat, EraIndex, EraRewardPoints<T::AccountId>, ValueQuery>;
 
+    /// Eras with unclaimed rewards per stash.
+    #[pallet::storage]
+    #[pallet::getter(fn unclaimed_stash_eras)]
+    pub type UnclaimedStashEras<T: Config> =
+        StorageDoubleMap<_, Twox64Concat, T::AccountId, Twox64Concat, EraIndex, (), OptionQuery>;
+
     /// The total amount staked for the last `HISTORY_DEPTH` eras.
     /// If total hasn't been set or has been removed then 0 stake is returned.
     #[pallet::storage]
@@ -708,6 +714,8 @@ pub mod pallet {
         TooManyValidators,
         /// Commission is too low. Must be at least `MinCommission`.
         CommissionTooLow,
+        /// Can't kill the stash while it has some unclaimed era rewards. It will be possible after claiming.
+        CantKillStashWithUnclaimedRewards,
     }
 
     #[pallet::hooks]

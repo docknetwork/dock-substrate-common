@@ -20,6 +20,32 @@ use super::*;
 use frame_election_provider_support::SortedListProvider;
 use frame_support::traits::OnRuntimeUpgrade;
 
+pub mod unclaimed_stash_eras {
+    use super::*;
+
+    pub struct MigrateToUnclaimedStashEras<T>(sp_std::marker::PhantomData<T>);
+    impl<T: Config> OnRuntimeUpgrade for MigrateToUnclaimedStashEras<T> {
+        fn on_runtime_upgrade() -> frame_support::weights::Weight {
+            let mut weight: Weight = Weight::default();
+            for (era_index, era_reward_points) in <ErasRewardPoints<T>>::iter() {
+                for (account, _) in era_reward_points
+                    .individual
+                    .into_iter()
+                    .filter(|(_, points)| !points.is_zero())
+                {
+                    <UnclaimedStashEras<T>>::insert(&account, era_index, ());
+
+                    weight += T::DbWeight::get().writes(1);
+                }
+
+                weight += T::DbWeight::get().reads(1);
+            }
+
+            weight
+        }
+    }
+}
+
 pub mod v10 {
     use super::*;
     use frame_support::storage_alias;
