@@ -17,15 +17,13 @@
 
 //! Tests for the module.
 
-use crate::migrations::unclaimed_stash_eras::MigrateToUnclaimedStashEras;
-
 use super::{ConfigOp, Event, MaxUnlockingChunks, *};
 use frame_election_provider_support::{ElectionProvider, SortedListProvider, Support};
 use frame_support::{
     assert_noop, assert_ok, assert_storage_noop, bounded_vec,
     dispatch::WithPostDispatchInfo,
     pallet_prelude::*,
-    traits::{Currency, Get, OnRuntimeUpgrade, ReservableCurrency},
+    traits::{Currency, Get, ReservableCurrency},
     weights::{extract_actual_weight, GetDispatchInfo},
 };
 use mock::*;
@@ -92,97 +90,6 @@ fn set_staking_configs_works() {
         assert_eq!(MaxValidatorsCount::<Test>::get(), None);
         assert_eq!(ChillThreshold::<Test>::get(), None);
         assert_eq!(MinCommission::<Test>::get(), Perbill::from_percent(0));
-    });
-}
-
-#[test]
-fn unclaimed_rewards_counter_migration() {
-    ExtBuilder::default().build_and_execute(|| {
-        ErasRewardPoints::<Test>::insert(
-            1,
-            EraRewardPoints {
-                total: 150,
-                individual: vec![(11, 100), (21, 50), (3, 0)].into_iter().collect(),
-            },
-        );
-        ErasRewardPoints::<Test>::insert(
-            2,
-            EraRewardPoints {
-                total: 150,
-                individual: vec![(11, 100), (3, 50), (13, 0)].into_iter().collect(),
-            },
-        );
-        ErasRewardPoints::<Test>::insert(
-            3,
-            EraRewardPoints {
-                total: 150,
-                individual: vec![(5, 100), (6, 50), (4, 0)].into_iter().collect(),
-            },
-        );
-
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix_values(&3).count(),
-            0
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix_values(&4).count(),
-            0
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix_values(&5).count(),
-            0
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix_values(&6).count(),
-            0
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix_values(&11).count(),
-            0
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix_values(&13).count(),
-            0
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix_values(&21).count(),
-            0
-        );
-
-        MigrateToUnclaimedStashEras::<Test>::on_runtime_upgrade();
-
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix(&3)
-                .map(|(k, ())| k)
-                .collect::<Vec<_>>(),
-            vec![2]
-        );
-        assert_eq!(UnclaimedStashEras::<Test>::iter_prefix(&4).count(), 0);
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix(&5)
-                .map(|(k, ())| k)
-                .collect::<Vec<_>>(),
-            vec![3]
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix(&6)
-                .map(|(k, ())| k)
-                .collect::<Vec<_>>(),
-            vec![3]
-        );
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix(&11)
-                .map(|(k, ())| k)
-                .collect::<Vec<_>>(),
-            vec![1, 2]
-        );
-        assert_eq!(UnclaimedStashEras::<Test>::iter_prefix(&13).count(), 0);
-        assert_eq!(
-            UnclaimedStashEras::<Test>::iter_prefix(&21)
-                .map(|(k, ())| k)
-                .collect::<Vec<_>>(),
-            vec![1]
-        );
     });
 }
 
