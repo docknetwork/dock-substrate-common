@@ -1,5 +1,5 @@
 [package]
-name = "price-feed-rpc"
+name = "dock-price-feed-rpc"
 version = "0.2.1"
 authors = ["Dock.io"]
 edition = "2021"
@@ -16,4 +16,4 @@ sp-rpc = { git = "https://github.com/paritytech/substrate.git", branch = "polkad
 sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.29"}
 sp-api = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.29" }
 sp-blockchain = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.29" }
-price-feed = {version = "0.2.0", path = ".." }
+dock-price-feed = {version = "0.2.0", path = ".." }

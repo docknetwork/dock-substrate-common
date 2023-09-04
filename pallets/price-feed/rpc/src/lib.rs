@@ -1,11 +1,11 @@
 use core::fmt::Debug;
+pub use dock_price_feed::runtime_api::PriceFeedApi as PriceFeedRuntimeApi;
+use dock_price_feed::{CurrencySymbolPair, PriceRecord};
 use jsonrpsee::{
     core::{async_trait, Error as JsonRpseeError, RpcResult},
     proc_macros::rpc,
     types::{error::CallError, ErrorObject},
 };
-pub use price_feed::runtime_api::PriceFeedApi as PriceFeedRuntimeApi;
-use price_feed::{CurrencySymbolPair, PriceRecord};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::{generic::BlockId, traits::Block as BlockT};
@@ -14,7 +14,7 @@ use std::sync::Arc;
 #[rpc(server, client)]
 pub trait PriceFeedApi<BlockHash, Number> {
     /// Returns the price of the supplied currency pair if it's present.
-    #[method(name = "price_feed_price")]
+    #[method(name = "dock_price_feed_price")]
     async fn price(
         &self,
         at: Option<BlockHash>,

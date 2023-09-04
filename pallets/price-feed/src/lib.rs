@@ -27,9 +27,9 @@ mod tests;
 /// Storage version.
 #[derive(Encode, Decode, Clone, TypeInfo, PartialEq, Eq, MaxEncodedLen)]
 pub enum Releases {
-    /// `price_feed` allows querying only a single pair (`DOCK`/`USD`) price.
+    /// `dock_price_feed` allows querying only a single pair (`DOCK`/`USD`) price.
     V1SinglePair,
-    /// `price_feed` allows to query of any pair price
+    /// `dock_price_feed` allows to query of any pair price
     V2MultiPair,
 }
 
