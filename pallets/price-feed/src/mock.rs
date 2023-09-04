@@ -1,4 +1,4 @@
-use crate as price_feed;
+use crate as dock_price_feed;
 
 use frame_support::{
     parameter_types,
@@ -24,7 +24,7 @@ frame_support::construct_runtime!(
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         Balances: balances::{Pallet, Call, Storage},
-        PriceFeedModule: price_feed::{Pallet, Call, Storage, Event<T>},
+        PriceFeedModule: dock_price_feed::{Pallet, Call, Storage, Event<T>},
     }
 );
 
@@ -83,7 +83,7 @@ impl timestamp::Config for Test {
     type WeightInfo = ();
 }
 
-impl price_feed::Config for Test {
+impl dock_price_feed::Config for Test {
     type MaxSymbolBytesLen = ConstU32<4>;
     type Event = ();
 }

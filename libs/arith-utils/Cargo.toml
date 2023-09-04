@@ -1,11 +1,12 @@
 [package]
 name = "arith-utils"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Dock.io"]
 edition = "2021"
 
 [dependencies]
+num-traits = { version = "0.2.16", default-features = false }
 
 [features]
 default = ["std"]
-std = []
+std = ["num-traits/std"]

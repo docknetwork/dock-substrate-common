@@ -1,5 +1,5 @@
 [package]
-name = "price-feed"
+name = "dock-price-feed"
 version = "0.2.1"
 authors = ["Dock.io"]
 edition = "2021"
@@ -55,7 +55,7 @@ git = "https://github.com/paritytech/substrate.git"
 branch = "polkadot-v0.9.29"
 
 [dependencies.price-provider]
-path = "../../libs/price_provider"
+path = "../../libs/price-provider"
 default-features = false
 
 [dev-dependencies.balances]
