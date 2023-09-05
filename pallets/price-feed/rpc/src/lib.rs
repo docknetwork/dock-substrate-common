@@ -14,7 +14,7 @@ use std::sync::Arc;
 #[rpc(server, client)]
 pub trait PriceFeedApi<BlockHash, Number> {
     /// Returns the price of the supplied currency pair if it's present.
-    #[method(name = "dock_price_feed_price")]
+    #[method(name = "price_feed_price")]
     async fn price(
         &self,
         at: Option<BlockHash>,
