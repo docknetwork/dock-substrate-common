@@ -13,7 +13,7 @@ use sp_std::prelude::*;
 
 pub mod runtime_api;
 pub use price_provider::{
-    BoundCurrencySymbolPair, BoundCurrencySymbolPairError, CurrencySymbolPair, PriceProvider,
+    BoundedCurrencySymbolPair, BoundedStringConversionError, CurrencySymbolPair, PriceProvider,
     PriceRecord, StaticPriceProvider,
 };
 use system::ensure_signed;
@@ -46,7 +46,7 @@ mod pallet {
     use super::*;
     use frame_support::pallet_prelude::{OptionQuery, ValueQuery, *};
     use frame_system::pallet_prelude::*;
-    use price_provider::currency_pair::EncodableAsString;
+    use price_provider::currency_pair::LikeString;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -70,15 +70,15 @@ mod pallet {
         T: Config,
     {
         OperatorAdded(
-            BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+            BoundedCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             <T as system::Config>::AccountId,
         ),
         OperatorRemoved(
-            BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+            BoundedCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             <T as system::Config>::AccountId,
         ),
         PriceSet(
-            BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+            BoundedCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
             PriceRecord<<T as system::Config>::BlockNumber>,
             <T as system::Config>::AccountId,
         ),
@@ -100,7 +100,7 @@ mod pallet {
     pub type Operators<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
-        BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+        BoundedCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         Twox64Concat,
         <T as frame_system::Config>::AccountId,
         (),
@@ -114,7 +114,7 @@ mod pallet {
     pub type Prices<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        BoundCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
+        BoundedCurrencySymbolPair<String, String, T::MaxSymbolBytesLen>,
         PriceRecord<T::BlockNumber>,
         OptionQuery,
     >;
@@ -233,7 +233,7 @@ mod pallet {
     }
 
     impl<T: Config> PriceProvider<T> for Pallet<T> {
-        type Error = BoundCurrencySymbolPairError;
+        type Error = BoundedStringConversionError;
 
         /// Returns the price of the given currency pair from storage.
         /// This operation performs a single storage read.
@@ -241,12 +241,12 @@ mod pallet {
             currency_pair: CurrencySymbolPair<From, To>,
         ) -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error>
         where
-            From: EncodableAsString,
-            To: EncodableAsString,
+            From: LikeString,
+            To: LikeString,
         {
             currency_pair
                 .try_into()
-                .map(Self::price::<BoundCurrencySymbolPair<_, _, T::MaxSymbolBytesLen>>)
+                .map(Self::price::<BoundedCurrencySymbolPair<_, _, T::MaxSymbolBytesLen>>)
         }
     }
 }

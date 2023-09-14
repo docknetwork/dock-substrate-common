@@ -7,11 +7,9 @@ use frame_support::traits::Get;
 pub mod currency_pair;
 pub mod price_record;
 
-pub use currency_pair::{
-    BoundCurrencySymbolPair, BoundCurrencySymbolPairError, CurrencySymbolPair, EncodableAsString,
-    StaticCurrencySymbolPair,
-};
+pub use currency_pair::{BoundedCurrencySymbolPair, CurrencySymbolPair, StaticCurrencySymbolPair};
 pub use price_record::PriceRecord;
+pub use utils::{BoundedStringConversionError, LikeString};
 
 /// Trait to provide price of currency pairs.
 /// The raw price amount should be divided by 10^decimals and rounded to get price per 1 unit.
@@ -24,8 +22,8 @@ pub trait PriceProvider<T: frame_system::Config> {
         currency_pair: CurrencySymbolPair<From, To>,
     ) -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error>
     where
-        From: EncodableAsString,
-        To: EncodableAsString;
+        From: LikeString,
+        To: LikeString;
 }
 
 /// Trait to provide price of the bound currency pair.

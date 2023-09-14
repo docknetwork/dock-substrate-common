@@ -3,8 +3,8 @@ use frame_support::{
     traits::{ConstU32, Get},
 };
 use price_provider::{
-    currency_pair::StaticCurrencySymbolPair, BoundCurrencySymbolPair, BoundCurrencySymbolPairError,
-    CurrencySymbolPair, PriceProvider, PriceRecord,
+    currency_pair::StaticCurrencySymbolPair, BoundedCurrencySymbolPair,
+    BoundedStringConversionError, CurrencySymbolPair, PriceProvider, PriceRecord,
 };
 use sp_runtime::{traits::CheckedConversion, DispatchError};
 use sp_std::borrow::ToOwned;
@@ -18,7 +18,7 @@ fn add_and_remove_operator() {
             PriceFeedModule::operators(
                 CurrencySymbolPair::new("A", "B")
                     .map_pair(ToOwned::to_owned)
-                    .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<4>>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, ConstU32<4>>>()
                     .unwrap(),
                 1
             ),
@@ -36,7 +36,7 @@ fn add_and_remove_operator() {
             PriceFeedModule::operators(
                 CurrencySymbolPair::new("A", "B")
                     .map_pair(ToOwned::to_owned)
-                    .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<4>>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, ConstU32<4>>>()
                     .unwrap(),
                 1
             ),
@@ -51,7 +51,7 @@ fn add_and_remove_operator() {
             PriceFeedModule::operators(
                 CurrencySymbolPair::new("A", "B")
                     .map_pair(ToOwned::to_owned)
-                    .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<4>>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, ConstU32<4>>>()
                     .unwrap(),
                 1
             ),
@@ -66,7 +66,7 @@ fn add_and_remove_operator() {
             PriceFeedModule::operators(
                 CurrencySymbolPair::new("A", "B")
                     .map_pair(ToOwned::to_owned)
-                    .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<4>>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, ConstU32<4>>>()
                     .unwrap(),
                 2
             ),
@@ -82,7 +82,7 @@ fn add_and_remove_operator() {
             PriceFeedModule::operators(
                 CurrencySymbolPair::new("A", "B")
                     .map_pair(ToOwned::to_owned)
-                    .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<4>>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, ConstU32<4>>>()
                     .unwrap(),
                 2,
             ),
@@ -101,7 +101,7 @@ fn add_and_remove_operator() {
             PriceFeedModule::operators(
                 CurrencySymbolPair::new("A", "B")
                     .map_pair(ToOwned::to_owned)
-                    .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<4>>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, ConstU32<4>>>()
                     .unwrap(),
                 1
             ),
@@ -116,7 +116,7 @@ fn add_and_remove_operator() {
             PriceFeedModule::operators(
                 CurrencySymbolPair::new("A", "B")
                     .map_pair(ToOwned::to_owned)
-                    .checked_into::<BoundCurrencySymbolPair<_, _, ConstU32<4>>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, ConstU32<4>>>()
                     .unwrap(),
                 1
             ),
@@ -169,7 +169,7 @@ fn set_price() {
         assert_eq!(
             PriceFeedModule::price(
                 CurrencySymbolPair::new("A", "B")
-                    .checked_into::<BoundCurrencySymbolPair<_, _, _>>()
+                    .checked_into::<BoundedCurrencySymbolPair<_, _, _>>()
                     .unwrap()
             )
             .unwrap(),
@@ -233,11 +233,11 @@ fn price_provider() {
         );
         assert_eq!(
             PriceFeedModule::pair_price(CurrencySymbolPair::new("ABCDE", "B")),
-            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundedStringConversionError::InvalidStringByteLen)
         );
         assert_eq!(
             PriceFeedModule::pair_price(CurrencySymbolPair::new("A", "BCDEF")),
-            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundedStringConversionError::InvalidStringByteLen)
         );
     });
 }
@@ -280,16 +280,16 @@ fn dock_price_provider() {
         );
         assert_eq!(
             <PriceFeedModule as StaticPriceProvider<Test, LargeSymUsdPair>>::price(),
-            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundedStringConversionError::InvalidStringByteLen)
         );
         assert_eq!(
             <PriceFeedModule as StaticPriceProvider<Test, UsdLargeCurrencySymbolPair>>::price(),
-            Err(BoundCurrencySymbolPairError::InvalidSymbolByteLen)
+            Err(BoundedStringConversionError::InvalidStringByteLen)
         );
 
         Prices::<Test>::insert(
             CurrencySymbolPair::new("DOCK", "USD")
-                .checked_into::<BoundCurrencySymbolPair<_, _, _>>()
+                .checked_into::<BoundedCurrencySymbolPair<_, _, _>>()
                 .unwrap(),
             PriceRecord::new(100, 2, 0),
         );
