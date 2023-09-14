@@ -20,7 +20,7 @@ pub trait CheckedDivCeil: Sized {
     fn checked_div_ceil(self, other: Self) -> Option<Self>;
 }
 
-/// Implements `DivCeil` for any type which implements `Div`/`Rem`/`Add`/`Ord`/`Zero`/`Copy`.
+/// Implements `DivCeil` for any type which implements `Div`/`Rem`/`Add`/`Ord`/`Zero`/`One`/`Copy`.
 impl<T> DivCeil for T
 where
     T: Div<Output = T> + Rem<Output = T> + Add<Output = T> + Ord + Zero + One + Copy,
@@ -38,7 +38,7 @@ where
     }
 }
 
-/// Implements `CheckedDivCeil` for any type which implements `CheckedDiv`/`CheckedRem`/`CheckedAdd`/`Ord`/`Zero`/`Copy`.
+/// Implements `CheckedDivCeil` for any type which implements `CheckedDiv`/`CheckedRem`/`CheckedAdd`/`Ord`/`Zero`/`One`/`Copy`.
 impl<T> CheckedDivCeil for T
 where
     T: CheckedDiv + CheckedRem + CheckedAdd + Ord + Zero + One + Copy,

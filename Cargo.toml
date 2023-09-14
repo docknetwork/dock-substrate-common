@@ -2,7 +2,7 @@
 resolver = "2"
 
 members = [
-    "libs/arith-utils",
+    "libs/utils",
     "libs/price-provider",
     "pallets/price-feed",
     "pallets/price-feed/rpc",
