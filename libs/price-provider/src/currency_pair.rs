@@ -187,14 +187,6 @@ where
     }
 }
 
-impl<From: Get<&'static str>, To: Get<&'static str>> Display
-    for StaticCurrencySymbolPair<From, To>
-{
-    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(fmt, "{}", Self::get())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[derive(Eq, PartialEq, Clone, Debug, Encode, TypeInfo)]
