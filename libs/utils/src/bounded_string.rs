@@ -20,11 +20,32 @@ pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String> {
     _marker: PhantomData<MaxBytesLen>,
 }
 
-type Result<T, E = BoundedStringConversionError> = core::result::Result<T, E>;
+impl<MaxBytesLen: Get<u32>, S: LikeString + Default> Default for BoundedString<MaxBytesLen, S> {
+    fn default() -> Self {
+        Self {
+            str: Default::default(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<MaxBytesLen: Get<u32>, S: LikeString + PartialOrd> PartialOrd
+    for BoundedString<MaxBytesLen, S>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.str.partial_cmp(&other.str)
+    }
+}
+
+impl<MaxBytesLen: Get<u32>, S: LikeString + Ord> Ord for BoundedString<MaxBytesLen, S> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.str.cmp(&other.str)
+    }
+}
 
 impl<MaxBytesLen: Get<u32>, S: LikeString> BoundedString<MaxBytesLen, S> {
     /// Instantiates `Self` if encoded byte size of the provided `S` doesn't exceed `MaxBytesLen`.
-    pub fn new(str: S) -> Result<Self> {
+    pub fn new(str: S) -> Result<Self, BoundedStringConversionError> {
         (str.encoded_size() <= Self::max_encoded_len())
             .then_some(Self {
                 str,
