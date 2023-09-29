@@ -20,27 +20,11 @@ pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String> {
     _marker: PhantomData<MaxBytesLen>,
 }
 
-impl<MaxBytesLen: Get<u32>, S: LikeString + Default> Default for BoundedString<MaxBytesLen, S> {
-    fn default() -> Self {
-        Self {
-            str: Default::default(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<MaxBytesLen: Get<u32>, S: LikeString + PartialOrd> PartialOrd
-    for BoundedString<MaxBytesLen, S>
-{
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.str.partial_cmp(&other.str)
-    }
-}
-
-impl<MaxBytesLen: Get<u32>, S: LikeString + Ord> Ord for BoundedString<MaxBytesLen, S> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.str.cmp(&other.str)
-    }
+/// Errors happening on `String` -> `BoundedString` conversion.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum BoundedStringConversionError {
+    /// The string byte size exceeds max allowed.
+    InvalidStringByteLen,
 }
 
 impl<MaxBytesLen: Get<u32>, S: LikeString> BoundedString<MaxBytesLen, S> {
@@ -60,11 +44,35 @@ impl<MaxBytesLen: Get<u32>, S: LikeString> BoundedString<MaxBytesLen, S> {
     }
 }
 
-/// Errors happening on `String` -> `BoundedString` conversion.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum BoundedStringConversionError {
-    /// The string byte size exceeds max allowed.
-    InvalidStringByteLen,
+impl<MaxBytesLen: Get<u32>, S: LikeString + Default> Default for BoundedString<MaxBytesLen, S> {
+    fn default() -> Self {
+        Self {
+            str: Default::default(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<MaxBytesLen: Get<u32>> TryFrom<String> for BoundedString<MaxBytesLen, String> {
+    type Error = BoundedStringConversionError;
+
+    fn try_from(str: String) -> Result<Self, Self::Error> {
+        BoundedString::new(str)
+    }
+}
+
+impl<MaxBytesLen: Get<u32>, S: LikeString + PartialOrd> PartialOrd
+    for BoundedString<MaxBytesLen, S>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.str.partial_cmp(&other.str)
+    }
+}
+
+impl<MaxBytesLen: Get<u32>, S: LikeString + Ord> Ord for BoundedString<MaxBytesLen, S> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.str.cmp(&other.str)
+    }
 }
 
 impl From<BoundedStringConversionError> for &'static str {
