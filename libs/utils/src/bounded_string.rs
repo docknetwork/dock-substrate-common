@@ -1,4 +1,4 @@
-use core::{fmt::Debug, marker::PhantomData};
+use core::{fmt::Debug, marker::PhantomData, ops::Deref};
 use frame_support::{traits::Get, CloneNoBound, DebugNoBound, EqNoBound, PartialEqNoBound};
 
 #[cfg(feature = "std")]
@@ -14,6 +14,7 @@ use sp_runtime::DispatchError;
 #[derive(TypeInfo)]
 #[scale_info(skip_type_params(MaxBytesLen))]
 pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String> {
+    #[cfg_attr(feature = "std", serde(flatten))]
     str: S,
     #[codec(skip)]
     #[cfg_attr(feature = "std", serde(skip))]
@@ -41,6 +42,14 @@ impl<MaxBytesLen: Get<u32>, S: LikeString> BoundedString<MaxBytesLen, S> {
     /// Consumes self and returns underlying `S` value.
     pub fn into_inner(self) -> S {
         self.str
+    }
+}
+
+impl<MaxBytesLen: Get<u32>, S: LikeString> Deref for BoundedString<MaxBytesLen, S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.str
     }
 }
 
