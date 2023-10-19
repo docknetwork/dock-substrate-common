@@ -1,7 +1,5 @@
 //! Arithmetic utilities.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use core::ops::{Add, Div, Rem};
 
 use num_traits::{CheckedAdd, CheckedDiv, CheckedRem, One, Zero};
