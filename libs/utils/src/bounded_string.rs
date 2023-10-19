@@ -1,12 +1,14 @@
 use core::{fmt::Debug, marker::PhantomData, ops::Deref};
-use frame_support::{traits::Get, CloneNoBound, DebugNoBound, EqNoBound, PartialEqNoBound};
+use frame_support::{
+    dispatch::DispatchError, traits::Get, CloneNoBound, DebugNoBound, EqNoBound, PartialEqNoBound,
+};
 
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
+use alloc::string::String;
 use codec::{Decode, Encode, EncodeLike, MaxEncodedLen};
-use scale_info::{prelude::string::String, TypeInfo};
-use sp_runtime::DispatchError;
+use scale_info::TypeInfo;
 
 /// String limited by the max encoded byte size.
 #[derive(Encode, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
@@ -73,13 +75,13 @@ impl<MaxBytesLen: Get<u32>> TryFrom<String> for BoundedString<MaxBytesLen, Strin
 impl<MaxBytesLen: Get<u32>, S: LikeString + PartialOrd> PartialOrd
     for BoundedString<MaxBytesLen, S>
 {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self.str.partial_cmp(&other.str)
     }
 }
 
 impl<MaxBytesLen: Get<u32>, S: LikeString + Ord> Ord for BoundedString<MaxBytesLen, S> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.str.cmp(&other.str)
     }
 }
