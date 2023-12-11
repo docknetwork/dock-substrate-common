@@ -6,22 +6,21 @@ use frame_support::{
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+
 use codec::{Decode, Encode, EncodeLike, MaxEncodedLen};
 use scale_info::TypeInfo;
 
 /// String limited by the max encoded byte size.
 #[derive(Encode, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(TypeInfo)]
-#[scale_info(skip_type_params(MaxBytesLen))]
-pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String> {
-    #[cfg_attr(feature = "std", serde(flatten))]
-    str: S,
+pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String>(
+    S,
     #[codec(skip)]
     #[cfg_attr(feature = "std", serde(skip))]
-    _marker: PhantomData<MaxBytesLen>,
-}
+    PhantomData<MaxBytesLen>,
+);
 
 /// Errors happening on `String` -> `BoundedString` conversion.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -34,16 +33,13 @@ impl<MaxBytesLen: Get<u32>, S: LikeString> BoundedString<MaxBytesLen, S> {
     /// Instantiates `Self` if encoded byte size of the provided `S` doesn't exceed `MaxBytesLen`.
     pub fn new(str: S) -> Result<Self, BoundedStringConversionError> {
         (str.encoded_size() <= Self::max_encoded_len())
-            .then_some(Self {
-                str,
-                _marker: PhantomData,
-            })
+            .then_some(Self(str, PhantomData))
             .ok_or(BoundedStringConversionError::InvalidStringByteLen)
     }
 
     /// Consumes self and returns underlying `S` value.
     pub fn into_inner(self) -> S {
-        self.str
+        self.0
     }
 }
 
@@ -51,16 +47,13 @@ impl<MaxBytesLen: Get<u32>, S: LikeString> Deref for BoundedString<MaxBytesLen, 
     type Target = S;
 
     fn deref(&self) -> &Self::Target {
-        &self.str
+        &self.0
     }
 }
 
 impl<MaxBytesLen: Get<u32>, S: LikeString + Default> Default for BoundedString<MaxBytesLen, S> {
     fn default() -> Self {
-        Self {
-            str: Default::default(),
-            _marker: PhantomData,
-        }
+        Self(Default::default(), Default::default())
     }
 }
 
@@ -76,13 +69,13 @@ impl<MaxBytesLen: Get<u32>, S: LikeString + PartialOrd> PartialOrd
     for BoundedString<MaxBytesLen, S>
 {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        self.str.partial_cmp(&other.str)
+        self.0.partial_cmp(&other.0)
     }
 }
 
 impl<MaxBytesLen: Get<u32>, S: LikeString + Ord> Ord for BoundedString<MaxBytesLen, S> {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.str.cmp(&other.str)
+        self.0.cmp(&other.0)
     }
 }
 
@@ -119,6 +112,19 @@ where
 {
     fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
         S::decode(input).and_then(|decoded| Self::new(decoded).map_err(Into::into))
+    }
+}
+
+/// There's a bug with `BoundedString` in substrate metadata generation.
+impl<MaxBytesLen: Get<u32> + 'static, S: LikeString> scale_info::TypeInfo
+    for BoundedString<MaxBytesLen, S>
+{
+    type Identity = Self;
+
+    fn type_info() -> scale_info::Type {
+        scale_info::Type::builder()
+            .path(scale_info::Path::new("BoundedString", "BoundedString"))
+            .composite(scale_info::build::Fields::unnamed().field(|f| f.ty::<S>()))
     }
 }
 
