@@ -13,13 +13,11 @@ use codec::{Decode, Encode, EncodeLike, MaxEncodedLen};
 use scale_info::TypeInfo;
 
 /// String limited by the max encoded byte size.
-#[derive(Encode, CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
+#[derive(CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String>(
     S,
-    #[codec(skip)]
-    #[cfg_attr(feature = "std", serde(skip))]
-    PhantomData<MaxBytesLen>,
+    #[cfg_attr(feature = "std", serde(skip))] PhantomData<MaxBytesLen>,
 );
 
 /// Errors happening on `String` -> `BoundedString` conversion.
@@ -112,6 +110,16 @@ where
 {
     fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
         S::decode(input).and_then(|decoded| Self::new(decoded).map_err(Into::into))
+    }
+}
+
+impl<MaxBytesLen, S: LikeString> Encode for BoundedString<MaxBytesLen, S>
+where
+    S: LikeString + Encode,
+    MaxBytesLen: Get<u32>,
+{
+    fn encode(&self) -> Vec<u8> {
+        self.0.encode()
     }
 }
 
