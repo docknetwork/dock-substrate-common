@@ -25,13 +25,18 @@ mod mock;
 mod tests;
 
 /// Storage version.
-#[derive(Encode, Decode, Clone, TypeInfo, PartialEq, Eq, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, Clone, TypeInfo, PartialEq, Eq, MaxEncodedLen)]
 pub enum Releases {
     /// `dock_price_feed` allows querying only a single pair (`DOCK`/`USD`) price.
-    #[default]
     V1SinglePair,
     /// `dock_price_feed` allows to query of any pair price
     V2MultiPair,
+}
+
+impl Default for Releases {
+    fn default() -> Self {
+        Releases::V1SinglePair
+    }
 }
 
 pub use pallet::*;
