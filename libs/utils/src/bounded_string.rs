@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(serialized, "\"ABC\"");
         assert_eq!(serde_json::to_string(&"abc").unwrap(), "\"abc\"");
 
-        let deserialized: BoundedString<ConstU32<3>> = serde_json::from_str(&"\"CDE\"").unwrap();
+        let deserialized: BoundedString<ConstU32<3>> = serde_json::from_str("\"CDE\"").unwrap();
         assert_eq!(
             deserialized,
             BoundedString::<ConstU32<3>, _>::new("CDE")
@@ -241,7 +241,7 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::from_str::<'_, BoundedString<ConstU32<2>>>(&"\"CDE\"")
+            serde_json::from_str::<'_, BoundedString<ConstU32<2>>>("\"CDE\"")
                 .unwrap_err()
                 .to_string(),
             <serde_json::Error as serde::de::Error>::custom(
