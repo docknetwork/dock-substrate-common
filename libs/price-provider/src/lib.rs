@@ -22,8 +22,8 @@ pub trait PriceProvider<T: frame_system::Config> {
         currency_pair: CurrencySymbolPair<From, To>,
     ) -> Result<Option<PriceRecord<T::BlockNumber>>, Self::Error>
     where
-        From: LikeString,
-        To: LikeString;
+        From: LikeString + 'static,
+        To: LikeString + 'static;
 }
 
 /// Trait to provide price of the bound currency pair.

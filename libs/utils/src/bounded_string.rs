@@ -1,4 +1,8 @@
-use core::{fmt::Debug, marker::PhantomData, ops::Deref};
+use core::{
+    fmt::{Debug, Display},
+    marker::PhantomData,
+    ops::Deref,
+};
 use frame_support::{
     dispatch::DispatchError, traits::Get, CloneNoBound, DebugNoBound, EqNoBound, PartialEqNoBound,
 };
@@ -14,7 +18,8 @@ use scale_info::TypeInfo;
 
 /// String limited by the max encoded byte size.
 #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize))]
+#[serde(transparent)]
 pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String>(
     S,
     #[cfg_attr(feature = "std", serde(skip))] PhantomData<MaxBytesLen>,
@@ -38,6 +43,30 @@ impl<MaxBytesLen: Get<u32>, S: LikeString> BoundedString<MaxBytesLen, S> {
     /// Consumes self and returns underlying `S` value.
     pub fn into_inner(self) -> S {
         self.0
+    }
+
+    /// Maps underlying value producing new `BoundedString` carrying result type.
+    pub fn map<F, R>(
+        self,
+        f: F,
+    ) -> Result<BoundedString<MaxBytesLen, R>, BoundedStringConversionError>
+    where
+        R: LikeString,
+        F: FnOnce(S) -> R,
+    {
+        BoundedString::new(f(self.into_inner()))
+    }
+
+    /// Attempts to map underlying value producing new `BoundedString` carrying result type.
+    pub fn translate<F, R, E>(self, f: F) -> Result<BoundedString<MaxBytesLen, R>, E>
+    where
+        R: LikeString,
+        F: FnOnce(S) -> Result<R, E>,
+        E: From<BoundedStringConversionError>,
+    {
+        let str = f(self.into_inner())?;
+
+        BoundedString::new(str).map_err(Into::into)
     }
 }
 
@@ -63,6 +92,18 @@ impl<MaxBytesLen: Get<u32>> TryFrom<String> for BoundedString<MaxBytesLen, Strin
     }
 }
 
+impl<MaxBytesLen: Get<u32>> From<BoundedString<MaxBytesLen, String>> for String {
+    fn from(BoundedString(str, _): BoundedString<MaxBytesLen, String>) -> Self {
+        str
+    }
+}
+
+impl<'a, MaxBytesLen: Get<u32>> From<BoundedString<MaxBytesLen, &'a str>> for &'a str {
+    fn from(BoundedString(str, _): BoundedString<MaxBytesLen, &'a str>) -> Self {
+        str
+    }
+}
+
 impl<MaxBytesLen: Get<u32>, S: LikeString + PartialOrd> PartialOrd
     for BoundedString<MaxBytesLen, S>
 {
@@ -82,6 +123,15 @@ impl From<BoundedStringConversionError> for &'static str {
         BoundedStringConversionError::InvalidStringByteLen: BoundedStringConversionError,
     ) -> Self {
         "The string byte size exceeds max allowed"
+    }
+}
+
+impl Display for BoundedStringConversionError {
+    fn fmt(
+        &self,
+        f: &mut scale_info::prelude::fmt::Formatter<'_>,
+    ) -> scale_info::prelude::fmt::Result {
+        write!(f, "{}", <&'static str>::from(*self))
     }
 }
 
@@ -113,6 +163,21 @@ where
     }
 }
 
+impl<'de, MaxBytesLen, S: LikeString> Deserialize<'de> for BoundedString<MaxBytesLen, S>
+where
+    S: LikeString + Deserialize<'de>,
+    MaxBytesLen: Get<u32>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let str = S::deserialize(deserializer)?;
+
+        Self::new(str).map_err(serde::de::Error::custom)
+    }
+}
+
 impl<MaxBytesLen, S: LikeString> Encode for BoundedString<MaxBytesLen, S>
 where
     S: LikeString + Encode,
@@ -124,7 +189,7 @@ where
 }
 
 /// There's a bug with `BoundedString` in substrate metadata generation.
-impl<MaxBytesLen: Get<u32> + 'static, S: LikeString> scale_info::TypeInfo
+impl<MaxBytesLen: Get<u32> + 'static, S: LikeString + 'static> scale_info::TypeInfo
     for BoundedString<MaxBytesLen, S>
 {
     type Identity = Self;
@@ -145,11 +210,8 @@ impl<MaxBytesLen: Get<u32>, S: LikeString> MaxEncodedLen for BoundedString<MaxBy
 }
 
 /// Denotes a type which implements `EncodeLike<String> + Eq + PartialEq + Clone + Debug + TypeInfo`
-pub trait LikeString:
-    EncodeLike<String> + Eq + PartialEq + Clone + Debug + TypeInfo + 'static
-{
-}
-impl<T: EncodeLike<String> + Eq + PartialEq + Clone + Debug + TypeInfo + 'static> LikeString for T {}
+pub trait LikeString: EncodeLike<String> + Eq + PartialEq + Clone + Debug + TypeInfo {}
+impl<T: EncodeLike<String> + Eq + PartialEq + Clone + Debug + TypeInfo> LikeString for T {}
 
 #[cfg(test)]
 mod tests {
@@ -157,6 +219,36 @@ mod tests {
     use sp_runtime::traits::ConstU32;
 
     use crate::{bounded_string::BoundedString, BoundedStringConversionError};
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn serde() {
+        use serde_json;
+
+        let serialized =
+            serde_json::to_string(&BoundedString::<ConstU32<10>, _>::new("ABC").unwrap()).unwrap();
+        assert_eq!(serialized, "\"ABC\"");
+        assert_eq!(serde_json::to_string(&"abc").unwrap(), "\"abc\"");
+
+        let deserialized: BoundedString<ConstU32<3>> = serde_json::from_str(&"\"CDE\"").unwrap();
+        assert_eq!(
+            deserialized,
+            BoundedString::<ConstU32<3>, _>::new("CDE")
+                .unwrap()
+                .map(ToString::to_string)
+                .unwrap()
+        );
+
+        assert_eq!(
+            serde_json::from_str::<'_, BoundedString<ConstU32<2>>>(&"\"CDE\"")
+                .unwrap_err()
+                .to_string(),
+            <serde_json::Error as serde::de::Error>::custom(
+                BoundedStringConversionError::InvalidStringByteLen
+            )
+            .to_string()
+        );
+    }
 
     #[test]
     fn workflow() {

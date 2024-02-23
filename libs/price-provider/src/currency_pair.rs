@@ -84,7 +84,7 @@ impl<S: LikeString> CurrencySymbolPair<S, S> {
     }
 }
 
-impl<From: LikeString, To: LikeString, MaxSymBytesLen: Get<u32>>
+impl<From: LikeString + 'static, To: LikeString + 'static, MaxSymBytesLen: Get<u32>>
     TryFrom<CurrencySymbolPair<From, To>> for BoundedCurrencySymbolPair<From, To, MaxSymBytesLen>
 {
     type Error = BoundedStringConversionError;
@@ -111,8 +111,8 @@ impl<From: LikeString, To: LikeString, MaxSymBytesLen: Get<u32>> Encode
 
 impl<From, To, MaxSymBytesLen> Decode for BoundedCurrencySymbolPair<From, To, MaxSymBytesLen>
 where
-    From: LikeString + Decode,
-    To: LikeString + Decode,
+    From: LikeString + Decode + 'static,
+    To: LikeString + Decode + 'static,
     MaxSymBytesLen: Get<u32>,
 {
     fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
@@ -146,8 +146,8 @@ where
 impl<FromTy, To, MaxSymBytesLen> From<BoundedCurrencySymbolPair<FromTy, To, MaxSymBytesLen>>
     for CurrencySymbolPair<FromTy, To>
 where
-    FromTy: LikeString,
-    To: LikeString,
+    FromTy: LikeString + 'static,
+    To: LikeString + 'static,
     MaxSymBytesLen: Get<u32> + 'static,
 {
     fn from(
