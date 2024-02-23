@@ -19,7 +19,7 @@ use scale_info::TypeInfo;
 /// String limited by the max encoded byte size.
 #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, DebugNoBound)]
 #[cfg_attr(feature = "std", derive(Serialize))]
-#[serde(transparent)]
+#[cfg_attr(feature = "std", serde(transparent))]
 pub struct BoundedString<MaxBytesLen: Get<u32>, S: LikeString = String>(
     S,
     #[cfg_attr(feature = "std", serde(skip))] PhantomData<MaxBytesLen>,
@@ -163,6 +163,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'de, MaxBytesLen, S: LikeString> Deserialize<'de> for BoundedString<MaxBytesLen, S>
 where
     S: LikeString + Deserialize<'de>,
