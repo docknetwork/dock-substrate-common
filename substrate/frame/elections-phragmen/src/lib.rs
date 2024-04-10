@@ -636,7 +636,7 @@ pub mod pallet {
         }
 
         /// Approves supplied candidacy. This method must be called before a new candidate will call `submit_candidacy`.
-        #[pallet::weight(T::DbWeight::get().reads(10))]
+        #[pallet::weight(T::WeightInfo::approve_candidacy())]
         pub fn approve_candidacy(origin: OriginFor<T>, candidacy: T::AccountId) -> DispatchResult {
             T::CandidatesApproverOrigin::ensure_origin(origin)?;
 
@@ -650,7 +650,7 @@ pub mod pallet {
         }
 
         /// Removes an approval for the supplied candidacy.
-        #[pallet::weight(T::DbWeight::get().reads(10))]
+        #[pallet::weight(T::WeightInfo::disapprove_candidacy())]
         pub fn disapprove_candidacy(
             origin: OriginFor<T>,
             candidacy: T::AccountId,
