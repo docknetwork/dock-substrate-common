@@ -118,13 +118,10 @@ impl<From: LikeString + 'static, To: LikeString + 'static, MaxSymBytesLen: Get<u
 
     /// Attempts to convert `CurrencySymbolPair` to the stored format with `MaxSymBytesLen` limit per symbol bytes.
     /// Returns `Err` if the encoded length of either symbol exceeds `MaxSymBytesLen`.
-    fn try_from(
-        CurrencySymbolPair { from, to }: CurrencySymbolPair<From, To>,
-    ) -> Result<Self, Self::Error> {
-        let bounded_from = BoundedString::new(from)?;
-        let bounded_to = BoundedString::new(to)?;
-
-        Ok(Self(CurrencySymbolPair::from((bounded_from, bounded_to))))
+    fn try_from(pair: CurrencySymbolPair<From, To>) -> Result<Self, Self::Error> {
+        pair.translate_over_from(BoundedString::new)?
+            .translate_over_to(BoundedString::new)
+            .map(Self)
     }
 }
 
@@ -177,14 +174,9 @@ where
     MaxSymBytesLen: Get<u32>,
 {
     fn from(
-        BoundedCurrencySymbolPair(currency_pair): BoundedCurrencySymbolPair<
-            FromTy,
-            To,
-            MaxSymBytesLen,
-        >,
+        BoundedCurrencySymbolPair(pair): BoundedCurrencySymbolPair<FromTy, To, MaxSymBytesLen>,
     ) -> Self {
-        currency_pair
-            .map_over_from(BoundedString::into_inner)
+        pair.map_over_from(BoundedString::into_inner)
             .map_over_to(BoundedString::into_inner)
     }
 }
