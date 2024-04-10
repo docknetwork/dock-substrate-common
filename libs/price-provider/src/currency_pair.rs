@@ -96,12 +96,12 @@ impl<From: LikeString, To: LikeString> CurrencySymbolPair<From, To> {
 }
 
 impl<S: LikeString> CurrencySymbolPair<S, S> {
-    /// Maps given currency pair over `from`/`to` members and attempts to create a new `CurrencySymbolPair`.
+    /// Maps given currency pair over `from`/`to` members and creates a new `CurrencySymbolPair`.
     pub fn map_pair<R: LikeString, F: FnMut(S) -> R>(self, mut map: F) -> CurrencySymbolPair<R, R> {
         self.map_over_from(&mut map).map_over_to(map)
     }
 
-    /// Maps given currency pair over `from`/`to` members and attempts to create a new `CurrencySymbolPair`.
+    /// Translates given currency pair over `from`/`to` members and attempts to create a new `CurrencySymbolPair`.
     pub fn translate_pair<R: LikeString, E, F: FnMut(S) -> Result<R, E>>(
         self,
         mut translate: F,
