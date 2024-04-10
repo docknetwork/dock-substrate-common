@@ -10,11 +10,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install 1.75 toolchain
+      - name: Install 1.74 toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.75
+          toolchain: 1.74
           override: true
 
       - name: Run cargo check
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install 1.75 toolchain
+      - name: Install 1.74 toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -53,11 +53,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install 1.75 toolchain
+      - name: Install 1.74 toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.75
+          toolchain: 1.74
           override: true
 
       - name: Run cargo test
@@ -73,11 +73,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install 1.75 toolchain
+      - name: Install 1.74 toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.75
+          toolchain: 1.74
           override: true
           components: rustfmt, clippy
 
