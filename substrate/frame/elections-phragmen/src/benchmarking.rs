@@ -22,8 +22,13 @@
 use super::*;
 
 use frame_benchmarking::{account, benchmarks, whitelist, BenchmarkError, BenchmarkResult};
-use frame_support::{dispatch::DispatchResultWithPostInfo, traits::OnInitialize};
+use frame_support::{
+    assert_ok,
+    dispatch::DispatchResultWithPostInfo,
+    traits::{EnsureOrigin, OnInitialize},
+};
 use frame_system::RawOrigin;
+use sp_runtime::DispatchResult;
 
 use crate::Pallet as Elections;
 
@@ -59,6 +64,13 @@ fn candidate_count<T: Config>() -> u32 {
     <Candidates<T>>::decode_len().unwrap_or(0usize) as u32
 }
 
+fn approve<T: Config>(account: &T::AccountId) -> DispatchResult {
+    Elections::<T>::approve_candidacy(
+        T::CandidatesApproverOrigin::successful_origin(),
+        account.clone(),
+    )
+}
+
 /// Add `c` new candidates.
 fn submit_candidates<T: Config>(
     c: u32,
@@ -67,6 +79,8 @@ fn submit_candidates<T: Config>(
     (0..c)
         .map(|i| {
             let account = endowed_account::<T>(prefix, i);
+            approve::<T>(&account).map_err(|_| "failed to approve candidacy")?;
+
             <Elections<T>>::submit_candidacy(
                 RawOrigin::Signed(account.clone()).into(),
                 candidate_count::<T>(),
@@ -259,6 +273,7 @@ benchmarks! {
 
         // we assume worse case that: extrinsic is successful and candidate is not duplicate.
         let candidate_account = endowed_account::<T>("caller", 0);
+        assert_ok!(approve::<T>(&candidate_account));
         whitelist!(candidate_account);
     }: _(RawOrigin::Signed(candidate_account.clone()), candidate_count::<T>())
     verify {
@@ -268,6 +283,25 @@ benchmarks! {
             use crate::tests::MEMBERS;
             MEMBERS.with(|m| *m.borrow_mut() = vec![]);
         }
+    }
+
+    approve_candidacy {
+        clean::<T>();
+        let candidacy = endowed_account::<T>("approved_candidacy", 0);
+
+    }: _<T::Origin>(T::CandidatesApproverOrigin::successful_origin(), candidacy.clone())
+    verify {
+        ApprovedCandidates::<T>::get(&candidacy).is_some()
+    }
+
+    disapprove_candidacy {
+        clean::<T>();
+        let candidacy = endowed_account::<T>("approved_candidacy", 0);
+        assert_ok!(approve::<T>(&candidacy));
+
+    }: _<T::Origin>(T::CandidatesApproverOrigin::successful_origin(), candidacy.clone())
+    verify {
+        ApprovedCandidates::<T>::get(&candidacy).is_none()
     }
 
     renounce_candidacy_candidate {
