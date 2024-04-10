@@ -291,7 +291,7 @@ benchmarks! {
 
     }: _<T::Origin>(T::CandidatesApproverOrigin::successful_origin(), candidacy.clone())
     verify {
-        ApprovedCandidates::<T>::get(&candidacy).is_some()
+        assert!(ApprovedCandidates::<T>::get(&candidacy).is_some());
     }
 
     disapprove_candidacy {
@@ -301,7 +301,7 @@ benchmarks! {
 
     }: _<T::Origin>(T::CandidatesApproverOrigin::successful_origin(), candidacy.clone())
     verify {
-        ApprovedCandidates::<T>::get(&candidacy).is_none()
+        assert!(ApprovedCandidates::<T>::get(&candidacy).is_none());
     }
 
     renounce_candidacy_candidate {
