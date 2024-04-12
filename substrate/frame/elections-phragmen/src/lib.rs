@@ -1457,7 +1457,7 @@ mod tests {
         type Identity = ();
 
         fn identity(account: &AccountId) -> Option<Self::Identity> {
-            ValidCandidates::<Test>::get(account)
+            CandidateIdentities::<Test>::get(account)
         }
     }
 
@@ -1465,14 +1465,14 @@ mod tests {
         type IdentityInfo = ();
 
         fn set_identity(account: AccountId, (): ()) -> DispatchResult {
-            ValidCandidates::<Test>::insert(account, ());
+            CandidateIdentities::<Test>::insert(account, ());
 
             Ok(())
         }
 
         fn remove_identity(account: &AccountId) -> DispatchResult {
             ensure!(
-                ValidCandidates::<Test>::take(account).is_some(),
+                CandidateIdentities::<Test>::take(account).is_some(),
                 IdentityDoestExist
             );
 
@@ -1481,7 +1481,7 @@ mod tests {
     }
 
     #[storage_alias]
-    pub type ValidCandidates<T: Config> = StorageMap<
+    pub type CandidateIdentities<T: Config> = StorageMap<
         Pallet<T>,
         Twox64Concat,
         <Test as frame_system::Config>::AccountId,
