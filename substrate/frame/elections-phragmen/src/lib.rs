@@ -114,7 +114,7 @@ use sp_runtime::{
     DispatchError, Perbill, RuntimeDebug,
 };
 use sp_std::{cmp::Ordering, prelude::*};
-use utils::IdentityProvider;
+use utils::*;
 
 mod benchmarking;
 pub mod weights;
@@ -296,7 +296,10 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
 
         /// Verifies account submitted as a candidate.
+        #[cfg(not(any(test, feature = "runtime-benchmarks")))]
         type CandidateIdentityProvider: IdentityProvider<Self>;
+        #[cfg(any(test, feature = "runtime-benchmarks"))]
+        type CandidateIdentityProvider: IdentityProvider<Self> + IdentitySetter<Self>;
     }
 
     #[pallet::hooks]
@@ -1325,6 +1328,7 @@ mod tests {
         BuildStorage, DispatchResult,
     };
     use substrate_test_utils::assert_eq_uvec;
+    use utils::IdentitySetter;
 
     parameter_types! {
         pub BlockWeights: frame_system::limits::BlockWeights =
@@ -1455,6 +1459,10 @@ mod tests {
         fn identity(account: &AccountId) -> Option<Self::Identity> {
             ValidCandidates::<Test>::get(account)
         }
+    }
+
+    impl IdentitySetter<Test> for CandidateIdentityProvider<Test> {
+        type IdentityInfo = ();
 
         fn set_identity(account: AccountId, (): ()) -> DispatchResult {
             ValidCandidates::<Test>::insert(account, ());
