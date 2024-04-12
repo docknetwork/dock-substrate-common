@@ -22,11 +22,7 @@
 use super::*;
 
 use frame_benchmarking::{account, benchmarks, whitelist, BenchmarkError, BenchmarkResult};
-use frame_support::{
-    assert_ok,
-    dispatch::DispatchResultWithPostInfo,
-    traits::{EnsureOrigin, OnInitialize},
-};
+use frame_support::{assert_ok, dispatch::DispatchResultWithPostInfo, traits::OnInitialize};
 use frame_system::RawOrigin;
 use sp_runtime::DispatchResult;
 
@@ -65,7 +61,7 @@ fn candidate_count<T: Config>() -> u32 {
 }
 
 fn approve<T: Config>(account: &T::AccountId) -> DispatchResult {
-    T::CandidacyVerifier::set_identity(account.clone(), Default::default())
+    T::CandidateIdentityProvider::set_identity(account.clone(), Default::default())
 }
 
 /// Add `c` new candidates.

@@ -296,7 +296,7 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
 
         /// Verifies account submitted as a candidate.
-        type CandidacyVerifier: IdentityProvider<Self>;
+        type CandidateIdentityProvider: IdentityProvider<Self>;
     }
 
     #[pallet::hooks]
@@ -466,7 +466,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             ensure!(
-                T::CandidacyVerifier::has_identity(&who),
+                T::CandidateIdentityProvider::has_identity(&who),
                 Error::<T>::CandidateMustHaveVerifiedIdentity
             );
 
@@ -1311,8 +1311,8 @@ mod tests {
     use frame_support::{
         assert_noop, assert_ok,
         dispatch::DispatchResultWithPostInfo,
-        ensure, ord_parameter_types,
-        pallet_prelude::{OptionQuery, ValueQuery},
+        ensure,
+        pallet_prelude::OptionQuery,
         parameter_types, storage_alias,
         traits::{ConstU32, ConstU64, OnInitialize},
         Twox64Concat,
@@ -1439,41 +1439,24 @@ mod tests {
     type AccountId = <Test as frame_system::Config>::AccountId;
 
     #[derive(Copy, Clone, Default, Debug)]
-    pub struct CandidacyVerifier<T>(PhantomData<T>);
+    pub struct CandidateIdentityProvider<T>(PhantomData<T>);
 
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    enum ApprovalError {
-        CandidateIsAlreadyApproved,
-        CandidateIsNotApproved,
-    }
+    struct IdentityDoestExist;
 
-    impl From<ApprovalError> for DispatchError {
-        fn from(error: ApprovalError) -> Self {
-            match error {
-                ApprovalError::CandidateIsAlreadyApproved => {
-                    DispatchError::Other("Candidate is already approved")
-                }
-                ApprovalError::CandidateIsNotApproved => {
-                    DispatchError::Other("Candidate is not approved")
-                }
-            }
+    impl From<IdentityDoestExist> for DispatchError {
+        fn from(IdentityDoestExist: IdentityDoestExist) -> Self {
+            Self::Other("Identity doesnt exist")
         }
     }
 
-    impl CandidacyVerifier<Test> {}
-
-    impl IdentityProvider<Test> for CandidacyVerifier<Test> {
+    impl IdentityProvider<Test> for CandidateIdentityProvider<Test> {
         type Identity = ();
 
         fn identity(account: &AccountId) -> Option<Self::Identity> {
             ValidCandidates::<Test>::get(account)
         }
 
-        fn set_identity(account: AccountId, identity: ()) -> DispatchResult {
-            ensure!(
-                !ValidCandidates::<Test>::contains_key(account),
-                ApprovalError::CandidateIsAlreadyApproved
-            );
+        fn set_identity(account: AccountId, (): ()) -> DispatchResult {
             ValidCandidates::<Test>::insert(account, ());
 
             Ok(())
@@ -1482,7 +1465,7 @@ mod tests {
         fn remove_identity(account: &AccountId) -> DispatchResult {
             ensure!(
                 ValidCandidates::<Test>::take(account).is_some(),
-                ApprovalError::CandidateIsNotApproved
+                IdentityDoestExist
             );
 
             Ok(())
@@ -1503,7 +1486,7 @@ mod tests {
         type PalletId = ElectionsPhragmenPalletId;
         type Event = Event;
         type Currency = Balances;
-        type CandidacyVerifier = CandidacyVerifier<Self>;
+        type CandidateIdentityProvider = CandidateIdentityProvider<Self>;
         type CurrencyToVote = frame_support::traits::SaturatingCurrencyToVote;
         type ChangeMembers = TestChangeMembers;
         type InitializeMembers = ();
@@ -1729,7 +1712,7 @@ mod tests {
             RawOrigin::Signed(acc) => Some(acc),
             _ => None,
         }) {
-            CandidacyVerifier::<Test>::set_identity(account, ()).map_err(Into::into)
+            CandidateIdentityProvider::<Test>::set_identity(account, ()).map_err(Into::into)
         } else {
             Err(BadOrigin.into())
         }
@@ -1759,8 +1742,8 @@ mod tests {
     #[test]
     fn candidacy_approval_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert!(!CandidacyVerifier::has_identity(&2));
-            assert!(!CandidacyVerifier::has_identity(&3));
+            assert!(!CandidateIdentityProvider::has_identity(&2));
+            assert!(!CandidateIdentityProvider::has_identity(&3));
 
             assert_noop!(
                 Elections::submit_candidacy(Origin::signed(2), 1),
@@ -1771,13 +1754,13 @@ mod tests {
                 Error::<Test>::CandidateMustHaveVerifiedIdentity
             );
 
-            assert_ok!(CandidacyVerifier::set_identity(2, ()));
-            assert!(CandidacyVerifier::has_identity(&2));
+            assert_ok!(CandidateIdentityProvider::set_identity(2, ()));
+            assert!(CandidateIdentityProvider::has_identity(&2));
             assert_ok!(Elections::submit_candidacy(Origin::signed(2), 1),);
 
-            assert_ok!(CandidacyVerifier::set_identity(3, ()));
-            assert!(CandidacyVerifier::has_identity(&3));
-            assert_ok!(CandidacyVerifier::remove_identity(&3));
+            assert_ok!(CandidateIdentityProvider::set_identity(3, ()));
+            assert!(CandidateIdentityProvider::has_identity(&3));
+            assert_ok!(CandidateIdentityProvider::remove_identity(&3));
 
             assert_noop!(
                 Elections::submit_candidacy(Origin::signed(3), 1),
@@ -1785,8 +1768,8 @@ mod tests {
             );
 
             assert_noop!(
-                CandidacyVerifier::remove_identity(&3),
-                ApprovalError::CandidateIsNotApproved
+                CandidateIdentityProvider::remove_identity(&3),
+                IdentityDoestExist
             );
         })
     }
