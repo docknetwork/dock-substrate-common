@@ -60,7 +60,7 @@ fn candidate_count<T: Config>() -> u32 {
     <Candidates<T>>::decode_len().unwrap_or(0usize) as u32
 }
 
-fn approve<T: Config>(account: &T::AccountId) -> DispatchResult {
+fn init_identity<T: Config>(account: &T::AccountId) -> DispatchResult {
     T::CandidateIdentityProvider::set_identity(account.clone(), Default::default())
 }
 
@@ -72,7 +72,7 @@ fn submit_candidates<T: Config>(
     (0..c)
         .map(|i| {
             let account = endowed_account::<T>(prefix, i);
-            approve::<T>(&account).map_err(|_| "failed to approve candidacy")?;
+            init_identity::<T>(&account).map_err(|_| "failed to init_identity candidacy")?;
 
             <Elections<T>>::submit_candidacy(
                 RawOrigin::Signed(account.clone()).into(),
@@ -266,7 +266,7 @@ benchmarks! {
 
         // we assume worse case that: extrinsic is successful and candidate is not duplicate.
         let candidate_account = endowed_account::<T>("caller", 0);
-        assert_ok!(approve::<T>(&candidate_account));
+        assert_ok!(init_identity::<T>(&candidate_account));
         whitelist!(candidate_account);
     }: _(RawOrigin::Signed(candidate_account.clone()), candidate_count::<T>())
     verify {

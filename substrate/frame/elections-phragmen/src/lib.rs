@@ -1715,7 +1715,7 @@ mod tests {
         ensure_members_has_approval_stake();
     }
 
-    fn approve_candidacy(origin: Origin) -> sp_runtime::DispatchResult {
+    fn init_candidate_identity(origin: Origin) -> sp_runtime::DispatchResult {
         if let Some(account) = Result::from(origin).ok().and_then(|o| match o {
             RawOrigin::Signed(acc) => Some(acc),
             _ => None,
@@ -1727,7 +1727,7 @@ mod tests {
     }
 
     fn approve_and_submit_candidacy(origin: Origin) -> sp_runtime::DispatchResult {
-        approve_candidacy(origin.clone())?;
+        init_candidate_identity(origin.clone())?;
         submit_candidacy(origin)
     }
 
@@ -2137,7 +2137,7 @@ mod tests {
     fn poor_candidate_submission_should_not_work() {
         ExtBuilder::default().build_and_execute(|| {
             assert_eq!(candidate_ids(), Vec::<u64>::new());
-            assert_ok!(approve_candidacy(Origin::signed(7)));
+            assert_ok!(init_candidate_identity(Origin::signed(7)));
             assert_noop!(
                 submit_candidacy(Origin::signed(7)),
                 Error::<Test>::InsufficientCandidateFunds,
