@@ -65,10 +65,7 @@ fn candidate_count<T: Config>() -> u32 {
 }
 
 fn approve<T: Config>(account: &T::AccountId) -> DispatchResult {
-    Elections::<T>::approve_candidacy(
-        T::CandidatesApproverOrigin::successful_origin(),
-        account.clone(),
-    )
+    T::CandidacyVerifier::set_identity(account.clone(), Default::default())
 }
 
 /// Add `c` new candidates.
@@ -283,25 +280,6 @@ benchmarks! {
             use crate::tests::MEMBERS;
             MEMBERS.with(|m| *m.borrow_mut() = vec![]);
         }
-    }
-
-    approve_candidacy {
-        clean::<T>();
-        let candidacy = endowed_account::<T>("approved_candidacy", 0);
-
-    }: _<T::Origin>(T::CandidatesApproverOrigin::successful_origin(), candidacy.clone())
-    verify {
-        assert!(ApprovedCandidates::<T>::get(&candidacy).is_some());
-    }
-
-    disapprove_candidacy {
-        clean::<T>();
-        let candidacy = endowed_account::<T>("approved_candidacy", 0);
-        assert_ok!(approve::<T>(&candidacy));
-
-    }: _<T::Origin>(T::CandidatesApproverOrigin::successful_origin(), candidacy.clone())
-    verify {
-        assert!(ApprovedCandidates::<T>::get(&candidacy).is_none());
     }
 
     renounce_candidacy_candidate {

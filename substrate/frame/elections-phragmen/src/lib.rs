@@ -114,6 +114,7 @@ use sp_runtime::{
     DispatchError, Perbill, RuntimeDebug,
 };
 use sp_std::{cmp::Ordering, prelude::*};
+use utils::IdentityProvider;
 
 mod benchmarking;
 pub mod weights;
@@ -201,7 +202,7 @@ type AccountIdLookupOf<T> = <<T as frame_system::Config>::Lookup as StaticLookup
 pub mod pallet {
     use super::*;
     use frame_support::{
-        pallet_prelude::{OptionQuery, StorageMap, ValueQuery, *},
+        pallet_prelude::{StorageMap, ValueQuery, *},
         Twox64Concat,
     };
     use frame_system::pallet_prelude::*;
@@ -294,8 +295,8 @@ pub mod pallet {
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
 
-        /// An origin that can approve candidates.
-        type CandidatesApproverOrigin: EnsureOrigin<Self::Origin>;
+        /// Verifies account submitted as a candidate.
+        type CandidacyVerifier: IdentityProvider<Self>;
     }
 
     #[pallet::hooks]
@@ -465,8 +466,8 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             ensure!(
-                ApprovedCandidates::<T>::contains_key(&who),
-                Error::<T>::CandidacyMustBeApproved
+                T::CandidacyVerifier::has_identity(&who),
+                Error::<T>::CandidateMustHaveVerifiedIdentity
             );
 
             let actual_count = <Candidates<T>>::decode_len().unwrap_or(0) as u32;
@@ -634,36 +635,6 @@ pub mod pallet {
 
             Ok(())
         }
-
-        /// Approves supplied candidacy. This method must be called before a new candidate will call `submit_candidacy`.
-        #[pallet::weight(T::WeightInfo::approve_candidacy())]
-        pub fn approve_candidacy(origin: OriginFor<T>, candidacy: T::AccountId) -> DispatchResult {
-            T::CandidatesApproverOrigin::ensure_origin(origin)?;
-
-            ensure!(
-                !ApprovedCandidates::<T>::contains_key(&candidacy),
-                Error::<T>::CandidacyIsAlreadyApproved
-            );
-            ApprovedCandidates::<T>::insert(candidacy, ());
-
-            Ok(())
-        }
-
-        /// Removes an approval for the supplied candidacy.
-        #[pallet::weight(T::WeightInfo::disapprove_candidacy())]
-        pub fn disapprove_candidacy(
-            origin: OriginFor<T>,
-            candidacy: T::AccountId,
-        ) -> DispatchResult {
-            T::CandidatesApproverOrigin::ensure_origin(origin)?;
-
-            ensure!(
-                ApprovedCandidates::<T>::take(candidacy).is_some(),
-                Error::<T>::CandidacyIsNotApproved
-            );
-
-            Ok(())
-        }
     }
 
     #[pallet::event]
@@ -742,12 +713,8 @@ pub mod pallet {
         InvalidRenouncing,
         /// Prediction regarding replacement after member removal is wrong.
         InvalidReplacement,
-        /// Supplied candidacy is already approved.
-        CandidacyIsAlreadyApproved,
-        /// Supplied candidacy isn't approved.
-        CandidacyIsNotApproved,
-        /// Before submitting a candidacy, make sure it was approved.
-        CandidacyMustBeApproved,
+        /// Supplied candidacy must have an identity verified.
+        CandidateMustHaveVerifiedIdentity,
     }
 
     /// The current elected members.
@@ -790,14 +757,6 @@ pub mod pallet {
     #[pallet::getter(fn voting)]
     pub type Voting<T: Config> =
         StorageMap<_, Twox64Concat, T::AccountId, Voter<T::AccountId, BalanceOf<T>>, ValueQuery>;
-
-    /// Map containing approved candidates.
-    ///
-    /// TWOX-NOTE: SAFE as `AccountId` is a crypto hash.
-    #[pallet::storage]
-    #[pallet::getter(fn approved_candidates)]
-    pub type ApprovedCandidates<T: Config> =
-        StorageMap<_, Twox64Concat, T::AccountId, (), OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn version)]
@@ -1345,20 +1304,25 @@ impl<T: Config> ContainsLengthBound for Pallet<T> {
 
 #[cfg(test)]
 mod tests {
+    use core::marker::PhantomData;
+
     use super::*;
     use crate as elections_phragmen;
     use frame_support::{
         assert_noop, assert_ok,
         dispatch::DispatchResultWithPostInfo,
-        ord_parameter_types, parameter_types,
+        ensure, ord_parameter_types,
+        pallet_prelude::{OptionQuery, ValueQuery},
+        parameter_types, storage_alias,
         traits::{ConstU32, ConstU64, OnInitialize},
+        Twox64Concat,
     };
-    use frame_system::{ensure_signed, EnsureSignedBy, RawOrigin};
+    use frame_system::{ensure_signed, RawOrigin};
     use sp_core::H256;
     use sp_runtime::{
         testing::Header,
         traits::{BadOrigin, BlakeTwo256, IdentityLookup},
-        BuildStorage,
+        BuildStorage, DispatchResult,
     };
     use substrate_test_utils::assert_eq_uvec;
 
@@ -1472,22 +1436,74 @@ mod tests {
 
     }
 
-    ord_parameter_types! {
-        pub const CandidacyApprover: u64 = 10;
+    type AccountId = <Test as frame_system::Config>::AccountId;
+
+    #[derive(Copy, Clone, Default, Debug)]
+    pub struct CandidacyVerifier<T>(PhantomData<T>);
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    enum ApprovalError {
+        CandidateIsAlreadyApproved,
+        CandidateIsNotApproved,
     }
 
-    impl CandidacyApprover {
-        fn signed() -> Origin {
-            Origin::signed(Self::get())
+    impl From<ApprovalError> for DispatchError {
+        fn from(error: ApprovalError) -> Self {
+            match error {
+                ApprovalError::CandidateIsAlreadyApproved => {
+                    DispatchError::Other("Candidate is already approved")
+                }
+                ApprovalError::CandidateIsNotApproved => {
+                    DispatchError::Other("Candidate is not approved")
+                }
+            }
         }
     }
+
+    impl CandidacyVerifier<Test> {}
+
+    impl IdentityProvider<Test> for CandidacyVerifier<Test> {
+        type Identity = ();
+
+        fn identity(account: &AccountId) -> Option<Self::Identity> {
+            ValidCandidates::<Test>::get(account)
+        }
+
+        fn set_identity(account: AccountId, identity: ()) -> DispatchResult {
+            ensure!(
+                !ValidCandidates::<Test>::contains_key(account),
+                ApprovalError::CandidateIsAlreadyApproved
+            );
+            ValidCandidates::<Test>::insert(account, ());
+
+            Ok(())
+        }
+
+        fn remove_identity(account: &AccountId) -> DispatchResult {
+            ensure!(
+                ValidCandidates::<Test>::take(account).is_some(),
+                ApprovalError::CandidateIsNotApproved
+            );
+
+            Ok(())
+        }
+    }
+
+    #[storage_alias]
+    pub type ValidCandidates<T: Config> = StorageMap<
+        Pallet<T>,
+        Twox64Concat,
+        <Test as frame_system::Config>::AccountId,
+        (),
+        OptionQuery,
+    >;
 
     impl Config for Test {
         type CandidacyDelay = CandidacyDelay;
         type PalletId = ElectionsPhragmenPalletId;
         type Event = Event;
         type Currency = Balances;
-        type CandidatesApproverOrigin = EnsureSignedBy<CandidacyApprover, Self::AccountId>;
+        type CandidacyVerifier = CandidacyVerifier<Self>;
         type CurrencyToVote = frame_support::traits::SaturatingCurrencyToVote;
         type ChangeMembers = TestChangeMembers;
         type InitializeMembers = ();
@@ -1713,7 +1729,7 @@ mod tests {
             RawOrigin::Signed(acc) => Some(acc),
             _ => None,
         }) {
-            Elections::approve_candidacy(Origin::signed(10), account)
+            CandidacyVerifier::<Test>::set_identity(account, ()).map_err(Into::into)
         } else {
             Err(BadOrigin.into())
         }
@@ -1743,50 +1759,34 @@ mod tests {
     #[test]
     fn candidacy_approval_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert!(Elections::approved_candidates(2).is_none());
-            assert_noop!(
-                Elections::approve_candidacy(Origin::signed(1), 2),
-                DispatchError::BadOrigin
-            );
-            assert_noop!(
-                Elections::approve_candidacy(Origin::signed(2), 2),
-                DispatchError::BadOrigin
-            );
-            assert_noop!(
-                Elections::approve_candidacy(Origin::root(), 2),
-                DispatchError::BadOrigin
-            );
-            assert!(Elections::approved_candidates(2).is_none());
+            assert!(!CandidacyVerifier::has_identity(&2));
+            assert!(!CandidacyVerifier::has_identity(&3));
 
             assert_noop!(
                 Elections::submit_candidacy(Origin::signed(2), 1),
-                Error::<Test>::CandidacyMustBeApproved
+                Error::<Test>::CandidateMustHaveVerifiedIdentity
             );
             assert_noop!(
                 Elections::submit_candidacy(Origin::signed(3), 1),
-                Error::<Test>::CandidacyMustBeApproved
+                Error::<Test>::CandidateMustHaveVerifiedIdentity
             );
 
-            assert_ok!(Elections::approve_candidacy(CandidacyApprover::signed(), 2));
-            assert!(Elections::approved_candidates(2).is_some());
-            assert_ok!(Elections::approve_candidacy(CandidacyApprover::signed(), 3));
-            assert!(Elections::approved_candidates(3).is_some());
-
+            assert_ok!(CandidacyVerifier::set_identity(2, ()));
+            assert!(CandidacyVerifier::has_identity(&2));
             assert_ok!(Elections::submit_candidacy(Origin::signed(2), 1),);
 
-            assert_ok!(Elections::disapprove_candidacy(
-                CandidacyApprover::signed(),
-                3
-            ));
+            assert_ok!(CandidacyVerifier::set_identity(3, ()));
+            assert!(CandidacyVerifier::has_identity(&3));
+            assert_ok!(CandidacyVerifier::remove_identity(&3));
 
             assert_noop!(
                 Elections::submit_candidacy(Origin::signed(3), 1),
-                Error::<Test>::CandidacyMustBeApproved
+                Error::<Test>::CandidateMustHaveVerifiedIdentity
             );
 
             assert_noop!(
-                Elections::disapprove_candidacy(CandidacyApprover::signed(), 3),
-                Error::<Test>::CandidacyIsNotApproved
+                CandidacyVerifier::remove_identity(&3),
+                ApprovalError::CandidateIsNotApproved
             );
         })
     }
