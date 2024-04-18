@@ -19,7 +19,7 @@ pub trait IdentityProvider<T: frame_system::Config> {
 
 /// Provides methods to set an account's identity.
 pub trait IdentitySetter<T: frame_system::Config> {
-    /// Idenity information to be associated with the account.
+    /// Identity information to be associated with the account.
     type IdentityInfo: Default;
 
     /// Attempts to set identity for the account.
