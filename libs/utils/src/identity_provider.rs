@@ -12,6 +12,9 @@ pub trait IdentityProvider<T: frame_system::Config> {
     fn has_identity(who: &T::AccountId) -> bool {
         Self::identity(who).is_some()
     }
+
+    /// Returns `true` if the supplied account has a verified identity.
+    fn has_verified_identity(who: &T::AccountId) -> bool;
 }
 
 /// Provides methods to set an account's identity.

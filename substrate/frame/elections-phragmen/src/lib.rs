@@ -469,7 +469,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             ensure!(
-                T::CandidateIdentityProvider::has_identity(&who),
+                T::CandidateIdentityProvider::has_verified_identity(&who),
                 Error::<T>::CandidateMustHaveVerifiedIdentity
             );
 
@@ -1459,6 +1459,10 @@ mod tests {
         fn identity(account: &AccountId) -> Option<Self::Identity> {
             CandidateIdentities::<Test>::get(account)
         }
+
+        fn has_verified_identity(account: &AccountId) -> bool {
+            Self::has_identity(account)
+        }
     }
 
     impl IdentitySetter<Test> for CandidateIdentityProvider<Test> {
@@ -1750,8 +1754,8 @@ mod tests {
     #[test]
     fn candidacy_approval_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert!(!CandidateIdentityProvider::has_identity(&2));
-            assert!(!CandidateIdentityProvider::has_identity(&3));
+            assert!(!CandidateIdentityProvider::has_verified_identity(&2));
+            assert!(!CandidateIdentityProvider::has_verified_identity(&3));
 
             assert_noop!(
                 Elections::submit_candidacy(Origin::signed(2), 1),
@@ -1763,11 +1767,11 @@ mod tests {
             );
 
             assert_ok!(CandidateIdentityProvider::set_identity(2, ()));
-            assert!(CandidateIdentityProvider::has_identity(&2));
+            assert!(CandidateIdentityProvider::has_verified_identity(&2));
             assert_ok!(Elections::submit_candidacy(Origin::signed(2), 1),);
 
             assert_ok!(CandidateIdentityProvider::set_identity(3, ()));
-            assert!(CandidateIdentityProvider::has_identity(&3));
+            assert!(CandidateIdentityProvider::has_verified_identity(&3));
             assert_ok!(CandidateIdentityProvider::remove_identity(&3));
 
             assert_noop!(
