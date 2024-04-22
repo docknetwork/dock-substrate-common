@@ -61,7 +61,8 @@ fn candidate_count<T: Config>() -> u32 {
 }
 
 fn init_identity<T: Config>(account: &T::AccountId) -> DispatchResult {
-    T::CandidateIdentityProvider::set_identity(account.clone(), Default::default())
+    T::CandidateIdentityProvider::set_identity(account.clone(), Default::default())?;
+    T::CandidateIdentityProvider::verify_identity(account, Default::default())
 }
 
 /// Add `c` new candidates.

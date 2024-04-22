@@ -469,7 +469,9 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             ensure!(
-                T::CandidateIdentityProvider::has_verified_identity(&who),
+                T::CandidateIdentityProvider::identity(&who)
+                    .as_ref()
+                    .map_or(false, |identity| identity.verified()),
                 Error::<T>::CandidateMustHaveVerifiedIdentity
             );
 
@@ -1311,6 +1313,7 @@ mod tests {
 
     use super::*;
     use crate as elections_phragmen;
+    use codec::MaxEncodedLen;
     use frame_support::{
         assert_noop, assert_ok,
         dispatch::DispatchResultWithPostInfo,
@@ -1453,25 +1456,49 @@ mod tests {
         }
     }
 
+    #[derive(Encode, Decode, MaxEncodedLen, Clone, Default, Debug)]
+    pub struct DummyIdentity {
+        verified: bool,
+    }
+
+    impl Identity for DummyIdentity {
+        type Info = ();
+        type Justification = ();
+
+        fn verified(&self) -> bool {
+            self.verified
+        }
+
+        fn info(&self) -> &() {
+            &()
+        }
+
+        fn verify(&mut self, (): ()) {
+            self.verified = true;
+        }
+    }
+
     impl IdentityProvider<Test> for CandidateIdentityProvider<Test> {
-        type Identity = ();
+        type Identity = DummyIdentity;
 
         fn identity(account: &AccountId) -> Option<Self::Identity> {
             CandidateIdentities::<Test>::get(account)
         }
-
-        fn has_verified_identity(account: &AccountId) -> bool {
-            Self::has_identity(account)
-        }
     }
 
     impl IdentitySetter<Test> for CandidateIdentityProvider<Test> {
-        type IdentityInfo = ();
-
         fn set_identity(account: AccountId, (): ()) -> DispatchResult {
-            CandidateIdentities::<Test>::insert(account, ());
+            CandidateIdentities::<Test>::insert(account, DummyIdentity::default());
 
             Ok(())
+        }
+
+        fn verify_identity(account: &AccountId, (): ()) -> DispatchResult {
+            CandidateIdentities::<Test>::try_mutate(account, |identity| {
+                identity.as_mut().ok_or(IdentityDoestExist)?.verified = true;
+
+                Ok(())
+            })
         }
 
         fn remove_identity(account: &AccountId) -> DispatchResult {
@@ -1489,7 +1516,7 @@ mod tests {
         Pallet<T>,
         Twox64Concat,
         <Test as frame_system::Config>::AccountId,
-        (),
+        DummyIdentity,
         OptionQuery,
     >;
 
@@ -1724,7 +1751,10 @@ mod tests {
             RawOrigin::Signed(acc) => Some(acc),
             _ => None,
         }) {
-            CandidateIdentityProvider::<Test>::set_identity(account, ()).map_err(Into::into)
+            CandidateIdentityProvider::<Test>::set_identity(account, ())?;
+            CandidateIdentityProvider::<Test>::verify_identity(&account, ())?;
+
+            Ok(())
         } else {
             Err(BadOrigin.into())
         }
@@ -1754,8 +1784,12 @@ mod tests {
     #[test]
     fn candidacy_approval_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert!(!CandidateIdentityProvider::has_verified_identity(&2));
-            assert!(!CandidateIdentityProvider::has_verified_identity(&3));
+            assert!(!CandidateIdentityProvider::identity(&2)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert!(!CandidateIdentityProvider::identity(&3)
+                .as_ref()
+                .map_or(false, Identity::verified));
 
             assert_noop!(
                 Elections::submit_candidacy(Origin::signed(2), 1),
@@ -1767,11 +1801,23 @@ mod tests {
             );
 
             assert_ok!(CandidateIdentityProvider::set_identity(2, ()));
-            assert!(CandidateIdentityProvider::has_verified_identity(&2));
+            assert!(!CandidateIdentityProvider::identity(&2)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert_ok!(CandidateIdentityProvider::verify_identity(&2, ()));
+            assert!(CandidateIdentityProvider::identity(&2)
+                .as_ref()
+                .map_or(false, Identity::verified));
             assert_ok!(Elections::submit_candidacy(Origin::signed(2), 1),);
 
             assert_ok!(CandidateIdentityProvider::set_identity(3, ()));
-            assert!(CandidateIdentityProvider::has_verified_identity(&3));
+            assert!(!CandidateIdentityProvider::identity(&3)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert_ok!(CandidateIdentityProvider::verify_identity(&3, ()));
+            assert!(CandidateIdentityProvider::identity(&3)
+                .as_ref()
+                .map_or(false, Identity::verified));
             assert_ok!(CandidateIdentityProvider::remove_identity(&3));
 
             assert_noop!(
