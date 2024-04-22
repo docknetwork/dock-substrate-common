@@ -11,10 +11,10 @@ pub trait Identity {
     fn verified(&self) -> bool;
 
     /// Returns underlying identity information.
-    fn info(&self) -> &Self::Info;
+    fn info(&self) -> Self::Info;
 
     /// Adds justification for the underlying identity.
-    fn verify(&mut self, justification: Self::Justification);
+    fn verify(&mut self, justification: Self::Justification) -> DispatchResult;
 }
 
 /// Provides methods to retrieve an account's identity.

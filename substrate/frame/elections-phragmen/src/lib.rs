@@ -1456,6 +1456,14 @@ mod tests {
         }
     }
 
+    struct IdentityIsAlreadyVerified;
+
+    impl From<IdentityIsAlreadyVerified> for DispatchError {
+        fn from(IdentityIsAlreadyVerified: IdentityIsAlreadyVerified) -> Self {
+            Self::Other("Identity is already verified")
+        }
+    }
+
     #[derive(Encode, Decode, MaxEncodedLen, Clone, Default, Debug)]
     pub struct DummyIdentity {
         verified: bool,
@@ -1469,12 +1477,15 @@ mod tests {
             self.verified
         }
 
-        fn info(&self) -> &() {
-            &()
+        fn info(&self) -> () {
+            ()
         }
 
-        fn verify(&mut self, (): ()) {
+        fn verify(&mut self, (): ()) -> DispatchResult {
+            ensure!(!self.verified, IdentityIsAlreadyVerified);
             self.verified = true;
+
+            Ok(())
         }
     }
 
