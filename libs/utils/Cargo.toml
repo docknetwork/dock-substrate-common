@@ -1,6 +1,6 @@
 [package]
 name = "utils"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Dock.io"]
 edition = "2021"
 
@@ -16,6 +16,7 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 sp-std = { default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.29" }
 sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.29" }
 sp-io = { default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.29" }
+frame-system = { default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.29" }
 frame-support = { default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.29" }
 
 [features]
@@ -28,6 +29,7 @@ std = [
     "sp-std/std",
     "scale-info/std",
     "frame-support/std",
+    "frame-system/std",
     "num-traits/std",
 ]
 

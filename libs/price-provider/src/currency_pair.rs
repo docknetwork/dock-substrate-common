@@ -54,7 +54,7 @@ impl<From: LikeString, To: LikeString> CurrencySymbolPair<From, To> {
         Self { from, to }
     }
 
-    /// Maps given currency pair over `from` member and attempts to create a new `CurrencySymbolPair`.
+    /// Maps given currency pair over `from` member and creates a new `CurrencySymbolPair`.
     pub fn map_over_from<R: LikeString, F: FnOnce(From) -> R>(
         self,
         map: F,
@@ -64,7 +64,7 @@ impl<From: LikeString, To: LikeString> CurrencySymbolPair<From, To> {
         CurrencySymbolPair::new((map)(from), to)
     }
 
-    /// Maps given currency pair over `to` member and attempts to create a new `CurrencySymbolPair`.
+    /// Maps given currency pair over `to` member and creates a new `CurrencySymbolPair`.
     pub fn map_over_to<R: LikeString, F: FnOnce(To) -> R>(
         self,
         map: F,
@@ -73,14 +73,41 @@ impl<From: LikeString, To: LikeString> CurrencySymbolPair<From, To> {
 
         CurrencySymbolPair::new(from, (map)(to))
     }
+
+    /// Translates given currency pair over `from` member and attempts to create a new `CurrencySymbolPair`.
+    pub fn translate_over_from<R: LikeString, E, F: FnOnce(From) -> Result<R, E>>(
+        self,
+        translate: F,
+    ) -> Result<CurrencySymbolPair<R, To>, E> {
+        let Self { from, to } = self;
+
+        (translate)(from).map(|from| CurrencySymbolPair::new(from, to))
+    }
+
+    /// Translates given currency pair over `to` member and attempts to create a new `CurrencySymbolPair`.
+    pub fn translate_over_to<R: LikeString, E, F: FnOnce(To) -> Result<R, E>>(
+        self,
+        translate: F,
+    ) -> Result<CurrencySymbolPair<From, R>, E> {
+        let Self { from, to } = self;
+
+        (translate)(to).map(|to| CurrencySymbolPair::new(from, to))
+    }
 }
 
 impl<S: LikeString> CurrencySymbolPair<S, S> {
-    /// Maps given currency pair over `from`/`to` members and attempts to create a new `CurrencySymbolPair`.
+    /// Maps given currency pair over `from`/`to` members and creates a new `CurrencySymbolPair`.
     pub fn map_pair<R: LikeString, F: FnMut(S) -> R>(self, mut map: F) -> CurrencySymbolPair<R, R> {
-        let Self { from, to } = self;
+        self.map_over_from(&mut map).map_over_to(map)
+    }
 
-        CurrencySymbolPair::new((map)(from), (map)(to))
+    /// Translates given currency pair over `from`/`to` members and attempts to create a new `CurrencySymbolPair`.
+    pub fn translate_pair<R: LikeString, E, F: FnMut(S) -> Result<R, E>>(
+        self,
+        mut translate: F,
+    ) -> Result<CurrencySymbolPair<R, R>, E> {
+        self.translate_over_from(&mut translate)?
+            .translate_over_to(translate)
     }
 }
 
@@ -91,13 +118,10 @@ impl<From: LikeString + 'static, To: LikeString + 'static, MaxSymBytesLen: Get<u
 
     /// Attempts to convert `CurrencySymbolPair` to the stored format with `MaxSymBytesLen` limit per symbol bytes.
     /// Returns `Err` if the encoded length of either symbol exceeds `MaxSymBytesLen`.
-    fn try_from(
-        CurrencySymbolPair { from, to }: CurrencySymbolPair<From, To>,
-    ) -> Result<Self, Self::Error> {
-        let bounded_from = BoundedString::new(from)?;
-        let bounded_to = BoundedString::new(to)?;
-
-        Ok(Self(CurrencySymbolPair::from((bounded_from, bounded_to))))
+    fn try_from(pair: CurrencySymbolPair<From, To>) -> Result<Self, Self::Error> {
+        pair.translate_over_from(BoundedString::new)?
+            .translate_over_to(BoundedString::new)
+            .map(Self)
     }
 }
 
@@ -116,9 +140,9 @@ where
     MaxSymBytesLen: Get<u32>,
 {
     fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
-        let res = CurrencySymbolPair::<From, To>::decode(input)?.try_into()?;
-
-        Ok(res)
+        CurrencySymbolPair::<From, To>::decode(input)?
+            .try_into()
+            .map_err(Into::into)
     }
 }
 
@@ -132,14 +156,13 @@ impl<From, To, MaxSymBytesLen> MaxEncodedLen for BoundedCurrencySymbolPair<From,
 where
     From: LikeString,
     To: LikeString,
-    MaxSymBytesLen: Get<u32> + 'static,
+    MaxSymBytesLen: Get<u32>,
 {
     fn max_encoded_len() -> usize {
-        BoundedString::<MaxSymBytesLen, From>::max_encoded_len().saturating_add(BoundedString::<
-            MaxSymBytesLen,
-            To,
-        >::max_encoded_len(
-        ))
+        let from_max_encoded_len = BoundedString::<MaxSymBytesLen, From>::max_encoded_len();
+        let to_max_encoded_len = BoundedString::<MaxSymBytesLen, To>::max_encoded_len();
+
+        from_max_encoded_len.saturating_add(to_max_encoded_len)
     }
 }
 
@@ -148,17 +171,12 @@ impl<FromTy, To, MaxSymBytesLen> From<BoundedCurrencySymbolPair<FromTy, To, MaxS
 where
     FromTy: LikeString + 'static,
     To: LikeString + 'static,
-    MaxSymBytesLen: Get<u32> + 'static,
+    MaxSymBytesLen: Get<u32>,
 {
     fn from(
-        BoundedCurrencySymbolPair(currency_pair): BoundedCurrencySymbolPair<
-            FromTy,
-            To,
-            MaxSymBytesLen,
-        >,
+        BoundedCurrencySymbolPair(pair): BoundedCurrencySymbolPair<FromTy, To, MaxSymBytesLen>,
     ) -> Self {
-        currency_pair
-            .map_over_from(BoundedString::into_inner)
+        pair.map_over_from(BoundedString::into_inner)
             .map_over_to(BoundedString::into_inner)
     }
 }

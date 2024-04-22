@@ -22,8 +22,9 @@
 use super::*;
 
 use frame_benchmarking::{account, benchmarks, whitelist, BenchmarkError, BenchmarkResult};
-use frame_support::{dispatch::DispatchResultWithPostInfo, traits::OnInitialize};
+use frame_support::{assert_ok, dispatch::DispatchResultWithPostInfo, traits::OnInitialize};
 use frame_system::RawOrigin;
+use sp_runtime::DispatchResult;
 
 use crate::Pallet as Elections;
 
@@ -59,6 +60,11 @@ fn candidate_count<T: Config>() -> u32 {
     <Candidates<T>>::decode_len().unwrap_or(0usize) as u32
 }
 
+fn init_identity<T: Config>(account: &T::AccountId) -> DispatchResult {
+    T::CandidateIdentityProvider::set_identity(account.clone(), Default::default())?;
+    T::CandidateIdentityProvider::verify_identity(account, Default::default())
+}
+
 /// Add `c` new candidates.
 fn submit_candidates<T: Config>(
     c: u32,
@@ -67,6 +73,8 @@ fn submit_candidates<T: Config>(
     (0..c)
         .map(|i| {
             let account = endowed_account::<T>(prefix, i);
+            init_identity::<T>(&account).map_err(|_| "failed to init_identity candidacy")?;
+
             <Elections<T>>::submit_candidacy(
                 RawOrigin::Signed(account.clone()).into(),
                 candidate_count::<T>(),
@@ -259,6 +267,7 @@ benchmarks! {
 
         // we assume worse case that: extrinsic is successful and candidate is not duplicate.
         let candidate_account = endowed_account::<T>("caller", 0);
+        assert_ok!(init_identity::<T>(&candidate_account));
         whitelist!(candidate_account);
     }: _(RawOrigin::Signed(candidate_account.clone()), candidate_count::<T>())
     verify {

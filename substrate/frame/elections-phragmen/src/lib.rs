@@ -114,6 +114,7 @@ use sp_runtime::{
     DispatchError, Perbill, RuntimeDebug,
 };
 use sp_std::{cmp::Ordering, prelude::*};
+use utils::*;
 
 mod benchmarking;
 pub mod weights;
@@ -200,7 +201,10 @@ type AccountIdLookupOf<T> = <<T as frame_system::Config>::Lookup as StaticLookup
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::pallet_prelude::*;
+    use frame_support::{
+        pallet_prelude::{StorageMap, ValueQuery, *},
+        Twox64Concat,
+    };
     use frame_system::pallet_prelude::*;
 
     /// The current storage version.
@@ -290,6 +294,12 @@ pub mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+
+        /// Verifies account submitted as a candidate.
+        #[cfg(not(any(test, feature = "runtime-benchmarks")))]
+        type CandidateIdentityProvider: IdentityProvider<Self>;
+        #[cfg(any(test, feature = "runtime-benchmarks"))]
+        type CandidateIdentityProvider: IdentityProvider<Self> + IdentitySetter<Self>;
     }
 
     #[pallet::hooks]
@@ -457,6 +467,13 @@ pub mod pallet {
             #[pallet::compact] candidate_count: u32,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+
+            ensure!(
+                T::CandidateIdentityProvider::identity(&who)
+                    .as_ref()
+                    .map_or(false, |identity| identity.verified()),
+                Error::<T>::CandidateMustHaveVerifiedIdentity
+            );
 
             let actual_count = <Candidates<T>>::decode_len().unwrap_or(0) as u32;
             ensure!(
@@ -701,6 +718,8 @@ pub mod pallet {
         InvalidRenouncing,
         /// Prediction regarding replacement after member removal is wrong.
         InvalidReplacement,
+        /// Supplied candidacy must have an identity verified.
+        CandidateMustHaveVerifiedIdentity,
     }
 
     /// The current elected members.
@@ -1290,22 +1309,29 @@ impl<T: Config> ContainsLengthBound for Pallet<T> {
 
 #[cfg(test)]
 mod tests {
+    use core::marker::PhantomData;
+
     use super::*;
     use crate as elections_phragmen;
+    use codec::MaxEncodedLen;
     use frame_support::{
         assert_noop, assert_ok,
         dispatch::DispatchResultWithPostInfo,
-        parameter_types,
+        ensure,
+        pallet_prelude::OptionQuery,
+        parameter_types, storage_alias,
         traits::{ConstU32, ConstU64, OnInitialize},
+        Twox64Concat,
     };
-    use frame_system::ensure_signed;
+    use frame_system::{ensure_signed, RawOrigin};
     use sp_core::H256;
     use sp_runtime::{
         testing::Header,
-        traits::{BlakeTwo256, IdentityLookup},
-        BuildStorage,
+        traits::{BadOrigin, BlakeTwo256, IdentityLookup},
+        BuildStorage, DispatchResult,
     };
     use substrate_test_utils::assert_eq_uvec;
+    use utils::IdentitySetter;
 
     parameter_types! {
         pub BlockWeights: frame_system::limits::BlockWeights =
@@ -1414,13 +1440,103 @@ mod tests {
         pub const PhragmenMaxVoters: u32 = 1000;
         pub const PhragmenMaxCandidates: u32 = 100;
         pub const CandidacyDelay: u32 = 4;
+
     }
+
+    type AccountId = <Test as frame_system::Config>::AccountId;
+
+    #[derive(Copy, Clone, Default, Debug)]
+    pub struct CandidateIdentityProvider<T>(PhantomData<T>);
+
+    struct IdentityDoestExist;
+
+    impl From<IdentityDoestExist> for DispatchError {
+        fn from(IdentityDoestExist: IdentityDoestExist) -> Self {
+            Self::Other("Identity doesnt exist")
+        }
+    }
+
+    struct IdentityIsAlreadyVerified;
+
+    impl From<IdentityIsAlreadyVerified> for DispatchError {
+        fn from(IdentityIsAlreadyVerified: IdentityIsAlreadyVerified) -> Self {
+            Self::Other("Identity is already verified")
+        }
+    }
+
+    #[derive(Encode, Decode, MaxEncodedLen, Clone, Default, Debug)]
+    pub struct DummyIdentity {
+        verified: bool,
+    }
+
+    impl Identity for DummyIdentity {
+        type Info = ();
+        type Justification = ();
+
+        fn verified(&self) -> bool {
+            self.verified
+        }
+
+        fn info(&self) -> () {
+            ()
+        }
+
+        fn verify(&mut self, (): ()) -> DispatchResult {
+            ensure!(!self.verified, IdentityIsAlreadyVerified);
+            self.verified = true;
+
+            Ok(())
+        }
+    }
+
+    impl IdentityProvider<Test> for CandidateIdentityProvider<Test> {
+        type Identity = DummyIdentity;
+
+        fn identity(account: &AccountId) -> Option<Self::Identity> {
+            CandidateIdentities::<Test>::get(account)
+        }
+    }
+
+    impl IdentitySetter<Test> for CandidateIdentityProvider<Test> {
+        fn set_identity(account: AccountId, (): ()) -> DispatchResult {
+            CandidateIdentities::<Test>::insert(account, DummyIdentity::default());
+
+            Ok(())
+        }
+
+        fn verify_identity(account: &AccountId, (): ()) -> DispatchResult {
+            CandidateIdentities::<Test>::try_mutate(account, |identity| {
+                identity.as_mut().ok_or(IdentityDoestExist)?.verified = true;
+
+                Ok(())
+            })
+        }
+
+        fn remove_identity(account: &AccountId) -> DispatchResult {
+            ensure!(
+                CandidateIdentities::<Test>::take(account).is_some(),
+                IdentityDoestExist
+            );
+
+            Ok(())
+        }
+    }
+
+    #[storage_alias]
+    pub type CandidateIdentities<T: Config> = StorageMap<
+        Pallet<T>,
+        Twox64Concat,
+        <Test as frame_system::Config>::AccountId,
+        DummyIdentity,
+        OptionQuery,
+    >;
 
     impl Config for Test {
         type CandidacyDelay = CandidacyDelay;
         type PalletId = ElectionsPhragmenPalletId;
         type Event = Event;
         type Currency = Balances;
+        type CandidateIdentityProvider = CandidateIdentityProvider<Self>;
         type CurrencyToVote = frame_support::traits::SaturatingCurrencyToVote;
         type ChangeMembers = TestChangeMembers;
         type InitializeMembers = ();
@@ -1641,6 +1757,25 @@ mod tests {
         ensure_members_has_approval_stake();
     }
 
+    fn init_candidate_identity(origin: Origin) -> sp_runtime::DispatchResult {
+        if let Some(account) = Result::from(origin).ok().and_then(|o| match o {
+            RawOrigin::Signed(acc) => Some(acc),
+            _ => None,
+        }) {
+            CandidateIdentityProvider::<Test>::set_identity(account, ())?;
+            CandidateIdentityProvider::<Test>::verify_identity(&account, ())?;
+
+            Ok(())
+        } else {
+            Err(BadOrigin.into())
+        }
+    }
+
+    fn approve_and_submit_candidacy(origin: Origin) -> sp_runtime::DispatchResult {
+        init_candidate_identity(origin.clone())?;
+        submit_candidacy(origin)
+    }
+
     fn submit_candidacy(origin: Origin) -> sp_runtime::DispatchResult {
         Elections::submit_candidacy(origin, Elections::candidates().len() as u32)
     }
@@ -1655,6 +1790,57 @@ mod tests {
 
     fn votes_of(who: &u64) -> Vec<u64> {
         Voting::<Test>::get(who).votes
+    }
+
+    #[test]
+    fn candidacy_approval_works() {
+        ExtBuilder::default().build_and_execute(|| {
+            assert!(!CandidateIdentityProvider::identity(&2)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert!(!CandidateIdentityProvider::identity(&3)
+                .as_ref()
+                .map_or(false, Identity::verified));
+
+            assert_noop!(
+                Elections::submit_candidacy(Origin::signed(2), 1),
+                Error::<Test>::CandidateMustHaveVerifiedIdentity
+            );
+            assert_noop!(
+                Elections::submit_candidacy(Origin::signed(3), 1),
+                Error::<Test>::CandidateMustHaveVerifiedIdentity
+            );
+
+            assert_ok!(CandidateIdentityProvider::set_identity(2, ()));
+            assert!(!CandidateIdentityProvider::identity(&2)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert_ok!(CandidateIdentityProvider::verify_identity(&2, ()));
+            assert!(CandidateIdentityProvider::identity(&2)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert_ok!(Elections::submit_candidacy(Origin::signed(2), 1),);
+
+            assert_ok!(CandidateIdentityProvider::set_identity(3, ()));
+            assert!(!CandidateIdentityProvider::identity(&3)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert_ok!(CandidateIdentityProvider::verify_identity(&3, ()));
+            assert!(CandidateIdentityProvider::identity(&3)
+                .as_ref()
+                .map_or(false, Identity::verified));
+            assert_ok!(CandidateIdentityProvider::remove_identity(&3));
+
+            assert_noop!(
+                Elections::submit_candidacy(Origin::signed(3), 1),
+                Error::<Test>::CandidateMustHaveVerifiedIdentity
+            );
+
+            assert_noop!(
+                CandidateIdentityProvider::remove_identity(&3),
+                IdentityDoestExist
+            );
+        })
     }
 
     #[test]
@@ -1863,7 +2049,7 @@ mod tests {
             assert!(Elections::is_candidate(&2).is_err());
 
             assert_eq!(balances(&1), (10, 0));
-            assert_ok!(submit_candidacy(Origin::signed(1)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(1)));
             assert_eq!(balances(&1), (7, 3));
 
             assert_eq!(candidate_ids(), vec![1]);
@@ -1872,7 +2058,7 @@ mod tests {
             assert!(Elections::is_candidate(&2).is_err());
 
             assert_eq!(balances(&2), (20, 0));
-            assert_ok!(submit_candidacy(Origin::signed(2)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
             assert_eq!(balances(&2), (17, 3));
 
             assert_eq!(candidate_ids(), vec![1, 2]);
@@ -1889,7 +2075,7 @@ mod tests {
     #[test]
     fn updating_candidacy_bond_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
             assert_eq!(
                 Elections::candidates(),
@@ -1899,7 +2085,7 @@ mod tests {
             // a runtime upgrade changes the bond.
             CANDIDACY_BOND.with(|v| *v.borrow_mut() = 4);
 
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
             assert_eq!(
                 Elections::candidates(),
@@ -1938,13 +2124,13 @@ mod tests {
         ExtBuilder::default().build_and_execute(|| {
             assert_eq!(candidate_ids(), Vec::<u64>::new());
 
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
             assert_eq!(candidate_ids(), vec![3]);
-            assert_ok!(submit_candidacy(Origin::signed(1)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(1)));
             assert_eq!(candidate_ids(), vec![1, 3]);
-            assert_ok!(submit_candidacy(Origin::signed(2)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
             assert_eq!(candidate_ids(), vec![1, 2, 3]);
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
             assert_eq!(candidate_ids(), vec![1, 2, 3, 4]);
         });
     }
@@ -1953,7 +2139,7 @@ mod tests {
     fn dupe_candidate_submission_should_not_work() {
         ExtBuilder::default().build_and_execute(|| {
             assert_eq!(candidate_ids(), Vec::<u64>::new());
-            assert_ok!(submit_candidacy(Origin::signed(1)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(1)));
             assert_eq!(candidate_ids(), vec![1]);
             assert_noop!(
                 submit_candidacy(Origin::signed(1)),
@@ -1966,7 +2152,7 @@ mod tests {
     fn member_candidacy_submission_should_not_work() {
         // critically important to make sure that outgoing candidates and losers are not mixed up.
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
             assert_ok!(vote(Origin::signed(2), vec![5], 20));
 
             System::set_block_number(5);
@@ -1988,9 +2174,9 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
                 assert_ok!(vote(Origin::signed(2), vec![5, 4], 20));
                 assert_ok!(vote(Origin::signed(1), vec![3], 10));
@@ -2012,6 +2198,7 @@ mod tests {
     fn poor_candidate_submission_should_not_work() {
         ExtBuilder::default().build_and_execute(|| {
             assert_eq!(candidate_ids(), Vec::<u64>::new());
+            assert_ok!(init_candidate_identity(Origin::signed(7)));
             assert_noop!(
                 submit_candidacy(Origin::signed(7)),
                 Error::<Test>::InsufficientCandidateFunds,
@@ -2025,7 +2212,7 @@ mod tests {
             assert_eq!(candidate_ids(), Vec::<u64>::new());
             assert_eq!(balances(&2), (20, 0));
 
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
             assert_ok!(vote(Origin::signed(2), vec![5], 20));
 
             assert_eq!(balances(&2), (18, 2));
@@ -2039,7 +2226,7 @@ mod tests {
             assert_eq!(candidate_ids(), Vec::<u64>::new());
             assert_eq!(balances(&2), (20, 0));
 
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
             assert_ok!(vote(Origin::signed(2), vec![5], 12));
 
             assert_eq!(balances(&2), (18, 2));
@@ -2052,8 +2239,8 @@ mod tests {
         ExtBuilder::default().build_and_execute(|| {
             assert_eq!(balances(&2), (20, 0));
 
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
             assert_ok!(vote(Origin::signed(2), vec![5], 20));
 
             // User only locks up to their free balance.
@@ -2072,7 +2259,7 @@ mod tests {
     #[test]
     fn updated_voting_bond_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             assert_eq!(balances(&2), (20, 0));
             assert_ok!(vote(Origin::signed(2), vec![5], 5));
@@ -2101,8 +2288,8 @@ mod tests {
             .build_and_execute(|| {
                 assert_eq!(balances(&2), (20, 0));
 
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
                 // initial vote.
                 assert_ok!(vote(Origin::signed(2), vec![5], 10));
@@ -2149,8 +2336,8 @@ mod tests {
     #[test]
     fn can_vote_for_old_members_even_when_no_new_candidates() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             assert_ok!(vote(Origin::signed(2), vec![4, 5], 20));
 
@@ -2167,9 +2354,9 @@ mod tests {
     #[test]
     fn prime_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(3)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             assert_ok!(vote(Origin::signed(1), vec![4, 3], 10));
             assert_ok!(vote(Origin::signed(2), vec![4], 20));
@@ -2191,9 +2378,9 @@ mod tests {
     #[test]
     fn prime_votes_for_exiting_members_are_removed() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(3)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             assert_ok!(vote(Origin::signed(1), vec![4, 3], 10));
             assert_ok!(vote(Origin::signed(2), vec![4], 20));
@@ -2219,8 +2406,8 @@ mod tests {
     #[test]
     fn prime_is_kept_if_other_members_leave() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
@@ -2243,8 +2430,8 @@ mod tests {
     #[test]
     fn prime_is_gone_if_renouncing() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
@@ -2271,9 +2458,9 @@ mod tests {
             .balance_factor(10)
             .build_and_execute(|| {
                 // when we have only candidates
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
                 assert_noop!(
                     // content of the vote is irrelevant.
@@ -2289,7 +2476,7 @@ mod tests {
                 Elections::on_initialize(System::block_number());
 
                 // now we have 2 members, 1 runner-up, and 1 new candidate
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(1), vec![9, 99, 999, 9999], 5));
                 assert_noop!(
@@ -2302,8 +2489,8 @@ mod tests {
     #[test]
     fn cannot_vote_for_less_than_ed() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             assert_noop!(
                 vote(Origin::signed(2), vec![4], 1),
@@ -2315,8 +2502,8 @@ mod tests {
     #[test]
     fn can_vote_for_more_than_free_balance_but_moot() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             // User has 100 free and 50 reserved.
             assert_ok!(Balances::set_balance(Origin::root(), 2, 100, 50));
@@ -2331,7 +2518,7 @@ mod tests {
     #[test]
     fn remove_voter_should_work() {
         ExtBuilder::default().voter_bond(8).build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             assert_ok!(vote(Origin::signed(2), vec![5], 20));
             assert_ok!(vote(Origin::signed(3), vec![5], 30));
@@ -2368,7 +2555,7 @@ mod tests {
     #[test]
     fn dupe_remove_should_fail() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
             assert_ok!(vote(Origin::signed(2), vec![5], 20));
 
             assert_ok!(Elections::remove_voter(Origin::signed(2)));
@@ -2384,9 +2571,9 @@ mod tests {
     #[test]
     fn removed_voter_should_not_be_counted() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -2404,9 +2591,9 @@ mod tests {
     #[test]
     fn simple_voting_rounds_should_work() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             assert_ok!(vote(Origin::signed(2), vec![5], 20));
             assert_ok!(vote(Origin::signed(4), vec![4], 15));
@@ -2454,8 +2641,8 @@ mod tests {
     #[test]
     fn all_outgoing() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -2490,7 +2677,7 @@ mod tests {
     fn candidacy_delay() {
         ExtBuilder::default().build_and_execute(|| {
             System::set_block_number(2);
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
 
             System::set_block_number(3);
@@ -2528,7 +2715,7 @@ mod tests {
     #[test]
     fn defunct_voter_will_be_counted() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             // This guy's vote is pointless for this round.
             assert_ok!(vote(Origin::signed(3), vec![4], 30));
@@ -2541,7 +2728,7 @@ mod tests {
             assert_eq!(Elections::election_rounds(), 1);
 
             // but now it has a valid target.
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             System::set_block_number(10);
             Elections::on_initialize(System::block_number());
@@ -2556,10 +2743,10 @@ mod tests {
     #[test]
     fn only_desired_seats_are_chosen() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
-            assert_ok!(submit_candidacy(Origin::signed(2)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
             assert_ok!(vote(Origin::signed(2), vec![2], 20));
             assert_ok!(vote(Origin::signed(3), vec![3], 30));
@@ -2577,8 +2764,8 @@ mod tests {
     #[test]
     fn phragmen_should_not_self_vote() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             System::set_block_number(5);
             Elections::on_initialize(System::block_number());
@@ -2598,10 +2785,10 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(2), vec![3], 20));
                 assert_ok!(vote(Origin::signed(3), vec![2], 30));
@@ -2627,10 +2814,10 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(2), vec![2], 20));
                 assert_ok!(vote(Origin::signed(3), vec![3], 30));
@@ -2657,9 +2844,9 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(1)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(2), vec![2], 20));
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -2671,7 +2858,7 @@ mod tests {
                 assert_eq!(runners_up_ids(), vec![2]);
                 assert_eq!(balances(&2), (15, 5));
 
-                assert_ok!(submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
                 assert_ok!(vote(Origin::signed(3), vec![3], 30));
 
                 System::set_block_number(10);
@@ -2687,7 +2874,7 @@ mod tests {
         ExtBuilder::default().build_and_execute(|| {
             assert_eq!(balances(&5), (50, 0));
 
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
             assert_eq!(balances(&5), (47, 3));
 
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
@@ -2711,8 +2898,8 @@ mod tests {
     #[test]
     fn candidates_lose_the_bond_when_outgoing() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             assert_ok!(vote(Origin::signed(4), vec![5], 40));
 
@@ -2734,8 +2921,8 @@ mod tests {
     #[test]
     fn current_members_are_always_next_candidate() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
@@ -2746,10 +2933,10 @@ mod tests {
             assert_eq!(members_ids(), vec![4, 5]);
             assert_eq!(Elections::election_rounds(), 1);
 
-            assert_ok!(submit_candidacy(Origin::signed(2)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
             assert_ok!(vote(Origin::signed(2), vec![2], 20));
 
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
             assert_ok!(vote(Origin::signed(3), vec![3], 30));
 
             assert_ok!(Elections::remove_voter(Origin::signed(4)));
@@ -2772,10 +2959,10 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(5), vec![5], 50));
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -2805,8 +2992,8 @@ mod tests {
     #[test]
     fn remove_members_triggers_election() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
@@ -2817,7 +3004,7 @@ mod tests {
             assert_eq!(Elections::election_rounds(), 1);
 
             // a new candidate
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
             assert_ok!(vote(Origin::signed(3), vec![3], 30));
 
             System::set_block_number(10);
@@ -2832,9 +3019,9 @@ mod tests {
     #[test]
     fn seats_should_be_released_when_no_vote() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             assert_ok!(vote(Origin::signed(2), vec![3], 20));
             assert_ok!(vote(Origin::signed(3), vec![3], 30));
@@ -2866,8 +3053,8 @@ mod tests {
     #[test]
     fn incoming_outgoing_are_reported() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
 
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
@@ -2876,9 +3063,9 @@ mod tests {
             Elections::on_initialize(System::block_number());
             assert_eq!(members_ids(), vec![4, 5]);
 
-            assert_ok!(submit_candidacy(Origin::signed(1)));
-            assert_ok!(submit_candidacy(Origin::signed(2)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(1)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             // 5 will change their vote and becomes an `outgoing`
             assert_ok!(vote(Origin::signed(5), vec![4], 8));
@@ -2913,8 +3100,8 @@ mod tests {
     #[test]
     fn invalid_votes_are_moot() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             assert_ok!(vote(Origin::signed(3), vec![3], 30));
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -2933,10 +3120,10 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(2), vec![3], 20));
                 assert_ok!(vote(Origin::signed(3), vec![2], 30));
@@ -2957,9 +3144,9 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(2), vec![5], 20));
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -2979,10 +3166,10 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(5), vec![5], 50));
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -3011,8 +3198,8 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
 
                 assert_ok!(vote(Origin::signed(5), vec![5], 50));
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -3040,10 +3227,10 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(5), vec![4], 50));
                 assert_ok!(vote(Origin::signed(4), vec![5], 40));
@@ -3072,10 +3259,10 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(2)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(2), vec![5], 20));
                 assert_ok!(vote(Origin::signed(3), vec![3], 30));
@@ -3099,7 +3286,7 @@ mod tests {
     #[test]
     fn can_renounce_candidacy_candidate() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
             assert_eq!(balances(&5), (47, 3));
             assert_eq!(candidate_ids(), vec![5]);
 
@@ -3135,9 +3322,9 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(1)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
                 assert_ok!(vote(Origin::signed(5), vec![5], 50));
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -3161,9 +3348,9 @@ mod tests {
         ExtBuilder::default()
             .desired_runners_up(1)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
                 assert_ok!(vote(Origin::signed(5), vec![5], 50));
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -3185,9 +3372,9 @@ mod tests {
     #[test]
     fn wrong_candidate_count_renounce_should_fail() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             assert_noop!(
                 Elections::renounce_candidacy(Origin::signed(4), Renouncing::Candidate(2)),
@@ -3204,9 +3391,9 @@ mod tests {
     #[test]
     fn renounce_candidacy_count_can_overestimate() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
             // while we have only 3 candidates.
             assert_ok!(Elections::renounce_candidacy(
                 Origin::signed(4),
@@ -3221,9 +3408,9 @@ mod tests {
             .desired_runners_up(2)
             .desired_members(1)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
                 assert_ok!(vote(Origin::signed(5), vec![5], 50));
                 assert_ok!(vote(Origin::signed(4), vec![4], 5));
@@ -3235,7 +3422,7 @@ mod tests {
                 assert_eq!(members_ids(), vec![5]);
                 assert_eq!(runners_up_ids(), vec![4, 3]);
 
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
                 assert_ok!(vote(Origin::signed(2), vec![2], 10));
 
                 System::set_block_number(10);
@@ -3257,9 +3444,9 @@ mod tests {
             .desired_runners_up(2)
             .desired_members(1)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
                 assert_ok!(vote(Origin::signed(3), vec![3], 30));
@@ -3276,7 +3463,7 @@ mod tests {
                 assert_eq!(balances(&2), (15, 5));
 
                 // this guy will shift everyone down.
-                assert_ok!(submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
                 assert_ok!(vote(Origin::signed(5), vec![5], 50));
 
                 System::set_block_number(10);
@@ -3300,9 +3487,9 @@ mod tests {
             .desired_runners_up(2)
             .desired_members(1)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_ok!(vote(Origin::signed(4), vec![4], 40));
                 assert_ok!(vote(Origin::signed(3), vec![3], 30));
@@ -3340,9 +3527,9 @@ mod tests {
     #[test]
     fn remove_and_replace_member_works() {
         let setup = || {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             assert_ok!(vote(Origin::signed(5), vec![5], 50));
             assert_ok!(vote(Origin::signed(4), vec![4], 40));
@@ -3402,9 +3589,9 @@ mod tests {
             .build_and_execute(|| {
                 assert_eq!(Elections::candidates().len(), 0);
 
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_eq!(Elections::candidates().len(), 3);
 
@@ -3428,9 +3615,9 @@ mod tests {
             .build_and_execute(|| {
                 assert_eq!(Elections::candidates().len(), 0);
 
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_eq!(Elections::candidates().len(), 3);
 
@@ -3454,9 +3641,9 @@ mod tests {
             .build_and_execute(|| {
                 assert_eq!(Elections::candidates().len(), 0);
 
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
 
                 assert_eq!(Elections::candidates().len(), 3);
 
@@ -3479,11 +3666,11 @@ mod tests {
         ExtBuilder::default()
             .desired_members(1)
             .build_and_execute(|| {
-                assert_ok!(submit_candidacy(Origin::signed(5)));
-                assert_ok!(submit_candidacy(Origin::signed(4)));
-                assert_ok!(submit_candidacy(Origin::signed(3)));
-                assert_ok!(submit_candidacy(Origin::signed(2)));
-                assert_ok!(submit_candidacy(Origin::signed(1)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(2)));
+                assert_ok!(approve_and_submit_candidacy(Origin::signed(1)));
 
                 // all these duplicate votes will not cause 2 to win.
                 assert_ok!(vote(Origin::signed(1), vec![2, 2, 2, 2], 5));
@@ -3501,9 +3688,9 @@ mod tests {
     #[test]
     fn remove_defunct_voter_works() {
         ExtBuilder::default().build_and_execute(|| {
-            assert_ok!(submit_candidacy(Origin::signed(5)));
-            assert_ok!(submit_candidacy(Origin::signed(4)));
-            assert_ok!(submit_candidacy(Origin::signed(3)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(5)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(4)));
+            assert_ok!(approve_and_submit_candidacy(Origin::signed(3)));
 
             // defunct
             assert_ok!(vote(Origin::signed(5), vec![5, 4], 5));

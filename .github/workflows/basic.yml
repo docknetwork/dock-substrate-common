@@ -36,7 +36,7 @@ jobs:
           profile: minimal
           toolchain: nightly
           override: true
-    
+
       - name: Install WASM
         run: rustup target add wasm32-unknown-unknown --toolchain nightly
 
