@@ -415,7 +415,7 @@ impl<AccountId: Encode + Decode> DepositPaybackTarget<AccountId> {
 pub mod pallet {
     use super::{DispatchResult, *};
     use frame_support::pallet_prelude::*;
-    use frame_system::pallet_prelude::*;
+    use frame_system::{pallet_prelude::*, RawOrigin};
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
@@ -1071,6 +1071,11 @@ pub mod pallet {
             voting_period: T::BlockNumber,
             delay: T::BlockNumber,
         ) -> DispatchResult {
+            let (is_root, origin) = match origin.into() {
+                Ok(RawOrigin::Root) => (true, RawOrigin::Root.into()),
+                Ok(other) => (false, other.into()),
+                Err(origin) => (false, origin),
+            };
             // Rather complicated bit of code to ensure that either:
             // - `voting_period` is at least `FastTrackVotingPeriod` and `origin` is
             //   `FastTrackOrigin`; or
@@ -1093,7 +1098,7 @@ pub mod pallet {
             let (e_proposal_hash, threshold) =
                 <NextExternal<T>>::get().ok_or(Error::<T>::ProposalMissing)?;
             ensure!(
-                threshold != VoteThreshold::SuperMajorityApprove,
+                is_root || threshold != VoteThreshold::SuperMajorityApprove,
                 Error::<T>::NotSimpleMajority,
             );
             ensure!(proposal_hash == e_proposal_hash, Error::<T>::InvalidHash);
