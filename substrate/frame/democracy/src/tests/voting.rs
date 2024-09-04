@@ -17,6 +17,8 @@
 
 //! The tests for normal voting functionality.
 
+use frame_system::RawOrigin;
+
 use super::*;
 
 #[test]
@@ -152,6 +154,50 @@ fn controversial_voting_should_work() {
         next_block();
 
         assert_eq!(Balances::free_balance(42), 2);
+    });
+}
+
+#[test]
+fn set_threshold_should_work() {
+    new_test_ext().execute_with(|| {
+        let r = Democracy::inject_referendum(
+            2,
+            set_balance_proposal_hash_and_note(2),
+            VoteThreshold::SuperMajorityApprove,
+            0,
+        );
+
+        assert_ok!(Democracy::vote(Origin::signed(1), r, aye(1)));
+        assert_ok!(Democracy::vote(Origin::signed(2), r, nay(2)));
+        assert_ok!(Democracy::vote(Origin::signed(3), r, nay(3)));
+        assert_ok!(Democracy::vote(Origin::signed(4), r, aye(4)));
+
+        assert_eq!(
+            tally(r),
+            Tally {
+                ayes: 5,
+                nays: 5,
+                turnout: 100
+            }
+        );
+        assert_ok!(Democracy::set_referendum_threshold(
+            RawOrigin::Root.into(),
+            r,
+            VoteThreshold::SuperMajorityAgainst
+        ));
+
+        next_block();
+        next_block();
+
+        assert_eq!(Balances::free_balance(42), 2);
+        assert_noop!(
+            Democracy::set_referendum_threshold(
+                RawOrigin::Root.into(),
+                r,
+                VoteThreshold::SuperMajorityAgainst
+            ),
+            Error::<Test>::ReferendumInvalid
+        );
     });
 }
 

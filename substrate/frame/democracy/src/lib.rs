@@ -780,6 +780,12 @@ pub mod pallet {
             recipient: T::AccountId,
             deposit: BalanceOf<T>,
         },
+        /// Referendum threshold was updated.
+        ReferendumThresholdUpdated {
+            ref_index: ReferendumIndex,
+            old_threshold: VoteThreshold,
+            new_threshold: VoteThreshold,
+        },
     }
 
     #[pallet::error]
@@ -1609,6 +1615,37 @@ pub mod pallet {
                 pays_fee: Pays::Yes,
             }
             .into())
+        }
+
+        /// Sets new threshold for the ongoing referendum.
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn set_referendum_threshold(
+            origin: OriginFor<T>,
+            ref_index: ReferendumIndex,
+            new_threshold: VoteThreshold,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            ReferendumInfoOf::<T>::try_mutate(ref_index, |info_opt| {
+                let status = info_opt
+                    .as_mut()
+                    .and_then(|info| match info {
+                        ReferendumInfo::Ongoing(status) => Some(status),
+                        _ => None,
+                    })
+                    .ok_or(Error::<T>::ReferendumInvalid)?;
+
+                let old_threshold = status.threshold;
+                status.threshold = new_threshold;
+
+                Self::deposit_event(Event::<T>::ReferendumThresholdUpdated {
+                    ref_index,
+                    old_threshold,
+                    new_threshold,
+                });
+
+                Ok(())
+            })
         }
     }
 }
