@@ -17,7 +17,7 @@
 
 //! Tests for the module.
 
-use core::iter::empty;
+use core::iter::{empty, once};
 
 use super::{ConfigOp, Event, MaxUnlockingChunks, *};
 use frame_election_provider_support::{ElectionProvider, SortedListProvider, Support};
@@ -440,6 +440,13 @@ fn whitelist_works() {
             Staking::validate(Origin::signed(10), ValidatorPrefs::default()),
             Error::<Test>::NotInAWhitelist
         );
+
+        super::Pallet::<Test>::set_whitelist(Origin::root(), Some(once(11).collect())).unwrap();
+
+        assert_ok!(Staking::validate(
+            Origin::signed(10),
+            ValidatorPrefs::default()
+        ),);
     })
 }
 
