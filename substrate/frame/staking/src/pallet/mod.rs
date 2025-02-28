@@ -50,7 +50,7 @@ const STAKING_ID: LockIdentifier = *b"staking ";
 
 #[frame_support::pallet]
 pub mod pallet {
-    use std::collections::BTreeSet;
+    use alloc::collections::BTreeSet;
 
     use frame_election_provider_support::ElectionDataProvider;
 
