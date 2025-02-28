@@ -50,6 +50,8 @@ const STAKING_ID: LockIdentifier = *b"staking ";
 
 #[frame_support::pallet]
 pub mod pallet {
+    use alloc::collections::BTreeSet;
+
     use frame_election_provider_support::ElectionDataProvider;
 
     use crate::BenchmarkingConfig;
@@ -516,6 +518,11 @@ pub mod pallet {
     #[pallet::storage]
     pub(crate) type ChillThreshold<T: Config> = StorageValue<_, Percent, OptionQuery>;
 
+    #[pallet::storage]
+    #[pallet::getter(fn candidate_whitelist)]
+    pub type CandidateWhitelist<T: Config> =
+        StorageValue<_, Option<BTreeSet<T::AccountId>>, ValueQuery>;
+
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub history_depth: u32,
@@ -716,6 +723,8 @@ pub mod pallet {
         CommissionTooLow,
         /// Can't kill the stash while it has some unclaimed era rewards. It will be possible after claiming.
         CantKillStashWithUnclaimedRewards,
+        /// Can only submit as candidates accounts that were whitelisted.
+        NotInAWhitelist,
     }
 
     #[pallet::hooks]
@@ -1046,6 +1055,11 @@ pub mod pallet {
             ensure!(
                 prefs.commission >= MinCommission::<T>::get(),
                 Error::<T>::CommissionTooLow
+            );
+
+            ensure!(
+                Self::candidate_whitelist().map_or(true, |set| set.contains(&stash)),
+                Error::<T>::NotInAWhitelist
             );
 
             // Only check limits if they are not already a validator.
@@ -1751,6 +1765,18 @@ pub mod pallet {
                     })
                     .ok_or(Error::<T>::NotStash)
             })?;
+            Ok(())
+        }
+
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn set_whitelist(
+            origin: OriginFor<T>,
+            whitelist: Option<BTreeSet<T::AccountId>>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            CandidateWhitelist::<T>::put(whitelist);
+
             Ok(())
         }
     }

@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "pallet-staking"
-version = "4.0.0-dev"
+version = "4.1.0-dev"
 dependencies = [
  "frame-benchmarking",
  "frame-election-provider-support",
@@ -1900,6 +1900,7 @@ dependencies = [
  "sp-npos-elections",
  "sp-runtime",
  "sp-staking",
+ "sp-state-machine",
  "sp-std",
  "sp-tracing",
  "substrate-test-utils",

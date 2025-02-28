@@ -88,6 +88,7 @@ pub fn create_stash_controller<T: Config>(
         amount,
         destination,
     )?;
+
     Ok((stash, controller))
 }
 

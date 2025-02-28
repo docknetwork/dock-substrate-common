@@ -17,6 +17,8 @@
 
 //! Tests for the module.
 
+use core::iter::{empty, once};
+
 use super::{ConfigOp, Event, MaxUnlockingChunks, *};
 use frame_election_provider_support::{ElectionProvider, SortedListProvider, Support};
 use frame_support::{
@@ -421,6 +423,30 @@ fn change_controller_works() {
             Origin::signed(5),
             ValidatorPrefs::default()
         ));
+    })
+}
+
+#[test]
+fn whitelist_works() {
+    ExtBuilder::default().build_and_execute(|| {
+        super::Pallet::<Test>::set_whitelist(Origin::root(), empty().collect()).unwrap();
+        // 10 and 11 are bonded as stash controller.
+        assert_eq!(Staking::bonded(&11), Some(10));
+
+        // 10 can control 11 who is initially a validator.
+        assert_ok!(Staking::chill(Origin::signed(10)));
+
+        assert_noop!(
+            Staking::validate(Origin::signed(10), ValidatorPrefs::default()),
+            Error::<Test>::NotInAWhitelist
+        );
+
+        super::Pallet::<Test>::set_whitelist(Origin::root(), Some(once(11).collect())).unwrap();
+
+        assert_ok!(Staking::validate(
+            Origin::signed(10),
+            ValidatorPrefs::default()
+        ),);
     })
 }
 
