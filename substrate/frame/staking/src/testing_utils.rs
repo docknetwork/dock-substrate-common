@@ -88,9 +88,6 @@ pub fn create_stash_controller<T: Config>(
         amount,
         destination,
     )?;
-    let mut whitelist = Staking::<T>::candidate_whitelist();
-    whitelist.insert(stash.clone());
-    Staking::<T>::set_whitelist(RawOrigin::Root.into(), whitelist).unwrap();
 
     Ok((stash, controller))
 }

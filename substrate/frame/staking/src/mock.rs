@@ -422,10 +422,6 @@ impl ExtBuilder {
             .build_storage::<Test>()
             .unwrap();
 
-        sp_state_machine::BasicExternalities::execute_with_storage(&mut storage, || {
-            Staking::set_whitelist(Origin::root(), (0..100).collect()).unwrap();
-        });
-
         let _ = pallet_balances::GenesisConfig::<Test> {
             balances: vec![
                 (1, 10 * self.balance_factor),

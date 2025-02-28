@@ -444,7 +444,11 @@ impl<T: Config> Pallet<T> {
 
         let whitelist = Self::candidate_whitelist();
         let to_remove: Vec<_> = Validators::<T>::iter_keys()
-            .filter(|validator| !whitelist.contains(&validator))
+            .filter(|validator| {
+                whitelist
+                    .as_ref()
+                    .map_or(false, |set| !set.contains(&validator))
+            })
             .collect();
         for validator in to_remove {
             Self::do_remove_validator(&validator);

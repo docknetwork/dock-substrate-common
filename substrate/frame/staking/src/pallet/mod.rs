@@ -520,7 +520,8 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn candidate_whitelist)]
-    pub type CandidateWhitelist<T: Config> = StorageValue<_, BTreeSet<T::AccountId>, ValueQuery>;
+    pub type CandidateWhitelist<T: Config> =
+        StorageValue<_, Option<BTreeSet<T::AccountId>>, ValueQuery>;
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -1057,7 +1058,7 @@ pub mod pallet {
             );
 
             ensure!(
-                Self::candidate_whitelist().contains(&stash),
+                Self::candidate_whitelist().map_or(true, |set| set.contains(&stash)),
                 Error::<T>::NotInAWhitelist
             );
 
@@ -1770,7 +1771,7 @@ pub mod pallet {
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn set_whitelist(
             origin: OriginFor<T>,
-            whitelist: BTreeSet<T::AccountId>,
+            whitelist: Option<BTreeSet<T::AccountId>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
