@@ -442,20 +442,23 @@ impl<T: Config> Pallet<T> {
             Self::clear_era_information(old_era);
         }
 
-        let whitelist = Self::candidate_whitelist();
-        let to_remove: Vec<_> = Validators::<T>::iter_keys()
-            .filter(|validator| {
-                whitelist
-                    .as_ref()
-                    .map_or(false, |set| !set.contains(&validator))
-            })
-            .collect();
-        for validator in to_remove {
-            Self::do_remove_validator(&validator);
+        // Set staking information for the new era.
+        let new_validators = Self::store_stakers_info(exposures, new_planned_era);
+
+        if let Some(whitelist) = Self::candidate_whitelist() {
+            let to_remove: Vec<_> = Validators::<T>::iter_keys()
+                .filter(|validator| {
+                    !whitelist.contains(&validator)
+                        && !new_validators.iter().any(|active| active == validator)
+                })
+                .collect();
+
+            for validator in to_remove {
+                Self::do_remove_validator(&validator);
+            }
         }
 
-        // Set staking information for the new era.
-        Self::store_stakers_info(exposures, new_planned_era)
+        new_validators
     }
 
     /// Potentially plan a new era.
